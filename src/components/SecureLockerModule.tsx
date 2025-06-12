@@ -1,6 +1,8 @@
 import React, { useState, useRef } from 'react';
-import { Upload, Download, Trash2, File, Image, Video, FileText, FolderOpen, Lock, Eye, EyeOff, Shield, Cloud } from 'lucide-react';
+import { Upload, Download, Trash2, File, Image, Video, FileText, FolderOpen, Lock, Eye, EyeOff, Shield, Cloud, KeyRound } from 'lucide-react';
 import { StoredFile } from '../types';
+import { useGoogleDrive } from '@/services/googleDrive';
+import GoogleDriveConnect from './GoogleDriveConnect';
 
 interface SecureLockerModuleProps {
   files: StoredFile[];
@@ -9,23 +11,61 @@ interface SecureLockerModuleProps {
 
 const SecureLockerModule = ({ files, setFiles }: SecureLockerModuleProps) => {
   const [uploading, setUploading] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<StoredFile | null>(null);
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  const [downloading, setDownloading] = useState<string | null>(null);
+  const [filePassword, setFilePassword] = useState('');
+  const [showFilePassword, setShowFilePassword] = useState(false);
   const [protectWithPassword, setProtectWithPassword] = useState(false);
   const [previewFile, setPreviewFile] = useState<StoredFile | null>(null);
+  const [isGoogleDriveConnected, setIsGoogleDriveConnected] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Google Drive integration placeholder
-  const uploadToGoogleDrive = async (file: File, password?: string): Promise<string> => {
-    // This is a placeholder for Google Drive integration
-    // In a real implementation, you would use the Google Drive API
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        // Simulate upload and return a mock URL
-        resolve(`https://drive.google.com/file/mock-${Date.now()}/view`);
-      }, 2000);
-    });
+  // Master password states
+  const [isMasterPasswordSet, setIsMasterPasswordSet] = useState(false);
+  const [masterPassword, setMasterPassword] = useState('');
+  const [confirmMasterPassword, setConfirmMasterPassword] = useState('');
+  const [masterPasswordError, setMasterPasswordError] = useState('');
+  const [showMasterPassword, setShowMasterPassword] = useState(false);
+
+  const { uploadFile, downloadFile, getAccessToken, listFiles: listDriveFiles } = useGoogleDrive();
+
+  const handleGoogleDriveConnect = async (accessToken: string) => {
+    try {
+      setIsGoogleDriveConnected(true);
+      // Load existing files from Google Drive
+      const driveFiles = await listDriveFiles(accessToken);
+      const storedFiles: StoredFile[] = driveFiles.map(file => ({
+        id: file.id,
+        name: file.name,
+        size: file.size || 0,
+        type: file.mimeType,
+        url: file.webViewLink || `https://drive.google.com/file/d/${file.id}/view`,
+        uploadedAt: new Date(file.createdTime || Date.now()),
+        isProtected: file.isEncrypted || false,
+      }));
+      setFiles(storedFiles);
+    } catch (error) {
+      console.error('Error loading files from Google Drive:', error);
+      setError('Failed to load files from Google Drive. Please try reconnecting.');
+    }
+  };
+
+  const handleGoogleDriveDisconnect = () => {
+    setIsGoogleDriveConnected(false);
+    setFiles([]);
+  };
+
+  const handleSetMasterPassword = () => {
+    if (masterPassword !== confirmMasterPassword) {
+      setMasterPasswordError('Passwords do not match.');
+      return;
+    }
+    if (masterPassword.length < 8) {
+      setMasterPasswordError('Password must be at least 8 characters long.');
+      return;
+    }
+    setIsMasterPasswordSet(true);
+    setMasterPasswordError('');
   };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -33,37 +73,83 @@ const SecureLockerModule = ({ files, setFiles }: SecureLockerModuleProps) => {
     if (!selectedFiles) return;
 
     setUploading(true);
+    setError(null);
     const newFiles: StoredFile[] = [];
+
+    const accessToken = getAccessToken();
+    if (!accessToken) {
+      setError('Google Drive is not connected. Please connect first.');
+      setUploading(false);
+      return;
+    }
 
     try {
       for (const file of Array.from(selectedFiles)) {
-        console.log('Uploading file to Google Drive:', file.name);
-        const url = await uploadToGoogleDrive(file, protectWithPassword ? password : undefined);
-        console.log('Upload successful:', url);
+        const uploadedFile = await uploadFile(
+          file, 
+          accessToken, 
+          protectWithPassword ? filePassword : undefined
+        );
         
         const storedFile: StoredFile = {
-          id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-          name: file.name,
+          id: uploadedFile.id,
+          name: uploadedFile.name,
           size: file.size,
-          type: file.type,
-          url: url,
+          type: uploadedFile.mimeType,
+          url: uploadedFile.webViewLink || `https://drive.google.com/file/d/${uploadedFile.id}/view`,
           uploadedAt: new Date(),
+          isProtected: uploadedFile.isEncrypted || false,
         };
 
         newFiles.push(storedFile);
       }
 
       setFiles([...files, ...newFiles]);
-      setPassword('');
+      setFilePassword('');
       setProtectWithPassword(false);
     } catch (error) {
       console.error('Upload failed:', error);
-      alert('Upload failed. Please try again.');
+      setError('Upload failed. Please try again.');
     } finally {
       setUploading(false);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
+    }
+  };
+
+  const handleFileDownload = async (file: StoredFile) => {
+    try {
+      setDownloading(file.id);
+      setError(null);
+
+      const accessToken = getAccessToken();
+      if (!accessToken) {
+        throw new Error('Google Drive is not connected');
+      }
+
+      let password: string | undefined;
+      if (file.isProtected) {
+        password = prompt('Enter password to decrypt file:');
+        if (!password) {
+          throw new Error('Password is required for encrypted file');
+        }
+      }
+
+      const blob = await downloadFile(file.id, accessToken, password);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = file.name;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Download failed:', error);
+      setError(error instanceof Error ? error.message : 'Download failed');
+    } finally {
+      setDownloading(null);
     }
   };
 
@@ -129,140 +215,176 @@ const SecureLockerModule = ({ files, setFiles }: SecureLockerModuleProps) => {
   };
 
   return (
-    <div className="flex-1 p-8 bg-background dark:bg-background">
-      <div className="max-w-6xl mx-auto">
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center space-x-3">
-            <Shield size={32} className="text-purple-600 dark:text-purple-400" />
-            <div>
-              <h1 className="text-3xl font-bold text-foreground dark:text-foreground">Locker</h1>
-              <p className="text-muted-foreground dark:text-muted-foreground">Secure cloud storage powered by Google Drive</p>
-            </div>
-          </div>
-          <div className="flex items-center space-x-4">
-            <Cloud size={24} className="text-blue-500" />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="bg-purple-600 hover:bg-purple-700 dark:bg-purple-600 dark:hover:bg-purple-700 text-white px-6 py-3 rounded-lg flex items-center space-x-2 transition-colors duration-300 disabled:opacity-50"
-            >
-              <Upload size={20} />
-              <span>{uploading ? 'Uploading...' : 'Upload Files'}</span>
-            </button>
-          </div>
+    <div className="p-8 bg-background text-foreground flex-1">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-3xl font-bold">Secure Locker</h1>
         </div>
 
-        {/* Upload Options */}
-        <div className="mb-6 p-4 bg-card dark:bg-card border border-border dark:border-border rounded-lg">
-          <div className="flex items-center space-x-4">
-            <label className="flex items-center space-x-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={protectWithPassword}
-                onChange={(e) => setProtectWithPassword(e.target.checked)}
-                className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
-              />
-              <span className="text-sm font-medium text-card-foreground dark:text-card-foreground">Protect with password</span>
-            </label>
-            {protectWithPassword && (
-              <div className="flex items-center space-x-2">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter password"
-                  className="px-3 py-2 border border-border dark:border-border rounded-md bg-background dark:bg-background text-foreground dark:text-foreground focus:outline-none focus:ring-2 focus:ring-purple-500"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="p-2 text-muted-foreground hover:text-card-foreground dark:text-muted-foreground dark:hover:text-card-foreground"
-                >
-                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={handleFileUpload}
-          multiple
-          className="hidden"
-        />
-
-        {files.length === 0 ? (
-          <div className="text-center py-16">
-            <FolderOpen size={64} className="mx-auto text-muted-foreground dark:text-muted-foreground mb-4" />
-            <h3 className="text-xl font-semibold text-foreground dark:text-foreground mb-2">No files uploaded yet</h3>
-            <p className="text-muted-foreground dark:text-muted-foreground mb-6">Upload your documents, images, and files to keep them safe in the cloud</p>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="bg-purple-600 hover:bg-purple-700 dark:bg-purple-600 dark:hover:bg-purple-700 text-white px-6 py-3 rounded-lg flex items-center space-x-2 mx-auto transition-colors duration-300"
-            >
-              <Upload size={20} />
-              <span>Upload Your First File</span>
-            </button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {files.map((file) => {
-              const FileIcon = getFileIcon(file.type);
-              return (
-                <div key={file.id} className="bg-card dark:bg-card rounded-lg border border-border dark:border-border p-6 hover:shadow-lg transition-all duration-300 hover:border-purple-400">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-center space-x-3">
-                      <FileIcon size={32} className="text-purple-600 dark:text-purple-400" />
-                      {protectWithPassword && <Lock size={16} className="text-yellow-500" />}
-                    </div>
-                    <div className="flex space-x-2">
-                      {canPreview(file.type) && (
-                        <button
-                          onClick={() => setPreviewFile(file)}
-                          className="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-600 transition-colors duration-300"
-                        >
-                          <Eye size={16} />
-                        </button>
-                      )}
-                      <button
-                        onClick={() => deleteFile(file.id)}
-                        className="text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-600 transition-colors duration-300"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </div>
-                  
-                  <h3 className="font-semibold text-card-foreground dark:text-card-foreground mb-2 truncate" title={file.name}>
-                    {file.name}
-                  </h3>
-                  
-                  <p className="text-sm text-muted-foreground dark:text-muted-foreground mb-2">
-                    {formatFileSize(file.size)}
-                  </p>
-                  
-                  <p className="text-xs text-muted-foreground dark:text-muted-foreground mb-4">
-                    {new Date(file.uploadedAt).toLocaleDateString()}
-                  </p>
-                  
-                  <a
-                    href={file.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="bg-purple-600 hover:bg-purple-700 dark:bg-purple-600 dark:hover:bg-purple-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 text-sm transition-colors duration-300 w-full justify-center"
-                  >
-                    <Download size={16} />
-                    <span>Download</span>
-                  </a>
-                </div>
-              );
-            })}
+        {error && (
+          <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded">
+            {error}
           </div>
         )}
 
-        {previewFile && renderFilePreview(previewFile)}
+        {!isGoogleDriveConnected ? (
+          <GoogleDriveConnect 
+            onConnect={handleGoogleDriveConnect}
+            onDisconnect={handleGoogleDriveDisconnect}
+          />
+        ) : !isMasterPasswordSet ? (
+          <div className="text-center py-24 bg-card border-2 border-dashed border-border rounded-lg">
+            <KeyRound size={64} className="mx-auto text-muted-foreground mb-4" />
+            <h3 className="text-2xl font-semibold text-foreground mb-2">Set Your Locker Password</h3>
+            <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+              Create a master password to secure your locker. You will need this to access your files.
+            </p>
+
+            <div className="max-w-md mx-auto space-y-4">
+              <div className="relative">
+                <input
+                  type={showMasterPassword ? "text" : "password"}
+                  value={masterPassword}
+                  onChange={(e) => setMasterPassword(e.target.value)}
+                  placeholder="Enter master password"
+                  className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+                <button
+                  onClick={() => setShowMasterPassword(!showMasterPassword)}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2"
+                >
+                  {showMasterPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                </button>
+              </div>
+
+              <div className="relative">
+                <input
+                  type={showMasterPassword ? "text" : "password"}
+                  value={confirmMasterPassword}
+                  onChange={(e) => setConfirmMasterPassword(e.target.value)}
+                  placeholder="Confirm master password"
+                  className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+
+              {masterPasswordError && (
+                <p className="text-red-500 text-sm">{masterPasswordError}</p>
+              )}
+
+              <button
+                onClick={handleSetMasterPassword}
+                className="w-full bg-primary text-primary-foreground px-6 py-2 rounded-lg hover:bg-primary/90 transition-colors"
+              >
+                Set Password
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-semibold">Your Files</h2>
+              <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="protectWithPassword"
+                    checked={protectWithPassword}
+                    onChange={(e) => setProtectWithPassword(e.target.checked)}
+                    className="rounded border-gray-300"
+                  />
+                  <label htmlFor="protectWithPassword" className="text-sm">
+                    Protect with password
+                  </label>
+                </div>
+                {protectWithPassword && (
+                  <div className="relative">
+                    <input
+                      type={showFilePassword ? "text" : "password"}
+                      value={filePassword}
+                      onChange={(e) => setFilePassword(e.target.value)}
+                      placeholder="Enter file password"
+                      className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                    />
+                    <button
+                      onClick={() => setShowFilePassword(!showFilePassword)}
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2"
+                    >
+                      {showFilePassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                    </button>
+                  </div>
+                )}
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileUpload}
+                  className="hidden"
+                  multiple
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading || (protectWithPassword && !filePassword)}
+                  className="flex items-center space-x-2 bg-primary text-primary-foreground px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
+                >
+                  <Upload size={20} />
+                  <span>{uploading ? 'Uploading...' : 'Upload Files'}</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {files.map((file) => {
+                const FileIcon = getFileIcon(file.type);
+                return (
+                  <div
+                    key={file.id}
+                    className="bg-card p-4 rounded-lg border hover:border-primary transition-colors"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center space-x-3">
+                        <FileIcon size={24} className="text-primary" />
+                        <div>
+                          <h3 className="font-medium truncate max-w-[200px]">{file.name}</h3>
+                          <p className="text-sm text-muted-foreground">
+                            {formatFileSize(file.size)}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => deleteFile(file.id)}
+                        className="text-destructive hover:text-destructive/90"
+                      >
+                        <Trash2 size={20} />
+                      </button>
+                    </div>
+                    <div className="mt-4 flex justify-between items-center">
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => handleFileDownload(file)}
+                          disabled={downloading === file.id}
+                          className="text-primary hover:underline text-sm flex items-center space-x-1"
+                        >
+                          <Download size={16} />
+                          <span>{downloading === file.id ? 'Downloading...' : 'Download'}</span>
+                        </button>
+                        <a
+                          href={file.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary hover:underline text-sm"
+                        >
+                          View in Drive
+                        </a>
+                      </div>
+                      {file.isProtected && (
+                        <Lock size={16} className="text-muted-foreground" />
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

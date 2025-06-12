@@ -57,8 +57,8 @@
     --popover: 220 13% 10%;
     --popover-foreground: 210 20% 92%;
 
-    --primary: 210 20% 92%;
-    --primary-foreground: 220 13% 8%;
+    --primary: 217.2 91.2% 59.8%;
+    --primary-foreground: 210 40% 98%;
 
     --secondary: 220 13% 14%;
     --secondary-foreground: 210 20% 92%;
@@ -109,9 +109,11 @@
     @apply bg-input text-foreground border-border;
   }
 
-  .dark button {
-    @apply text-foreground;
+  /* Force primary buttons to have correct text color in dark mode */
+  .dark .bg-primary {
+    color: hsl(var(--primary-foreground));
   }
+
 
   /* Fix dropdown backgrounds */
   .dark [data-radix-select-content] {
@@ -174,6 +176,11 @@
 
   .dark [data-state="unchecked"] {
     background-color: hsl(var(--muted)) !important;
+  }
+
+  /* Set thumb to black on white switch in dark mode */
+  .dark [data-state="checked"] span {
+    background-color: hsl(var(--primary-foreground)) !important;
   }
 
   /* Fix placeholder text in dark mode */
@@ -256,6 +263,22 @@
   .dark .hover\:bg-purple-700:hover {
     background-color: rgb(126 34 206) !important;
   }
+}
+
+/* Custom Switch Thumb Color */
+/* Black thumb for unchecked switch in light mode */
+:root button[role="switch"][data-state="unchecked"] > span {
+  background-color: hsl(var(--primary));
+}
+
+/* Black thumb for checked switch in dark mode */
+.dark button[role="switch"][data-state="checked"] > span {
+  background-color: hsl(var(--primary-foreground));
+}
+
+/* Light grey background for unchecked switch in light mode */
+:root button[role="switch"][data-state="unchecked"] {
+  background-color: hsl(var(--muted));
 }
 
 /* Custom animations for gamification */

@@ -6,6 +6,7 @@ import NotesModule from '../components/NotesModule';
 import TodoModule from '../components/TodoModule';
 import SecureLockerModule from '../components/SecureLockerModule';
 import BookmarkManager from '../components/BookmarkManager';
+import AchievementsModule from '../components/AchievementsModule';
 import TodaysFocus from '../components/TodaysFocus';
 import SearchBar from '../components/SearchBar';
 import ExportImport from '../components/ExportImport';
@@ -13,9 +14,11 @@ import DarkModeToggle from '../components/DarkModeToggle';
 import Auth from '../components/Auth';
 import { AuthProvider, useAuth } from '../hooks/useAuth';
 import { Note, Todo, StoredFile, StoredLink } from '../types';
+import { UserProfile } from '../types/gamification';
+import { missions } from '../lib/missions';
 
 const AppContent = () => {
-  const [activeModule, setActiveModule] = useState<'notes' | 'todos' | 'locker' | 'links' | 'settings'>('notes');
+  const [activeModule, setActiveModule] = useState<'notes' | 'todos' | 'locker' | 'links' | 'achievements' | 'settings'>('notes');
   const [notes, setNotes] = useState<Note[]>([]);
   const [todos, setTodos] = useState<Todo[]>([]);
   const [files, setFiles] = useState<StoredFile[]>([]);
@@ -23,9 +26,57 @@ const AppContent = () => {
   const [focusedTasks, setFocusedTasks] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [userProfile, setUserProfile] = useState<UserProfile>({
+    xp: 0,
+    level: 1,
+    dailyStreak: 0,
+    lastLogin: '',
+    missionProgress: {},
+  });
   const [darkMode, setDarkMode] = useState(false);
 
   const { user, loading } = useAuth();
+
+  const handleUserAction = (actionType: 'note_created' | 'todo_completed') => {
+    let newXp = userProfile.xp;
+    let newLevel = userProfile.level;
+    const newMissionProgress = { ...userProfile.missionProgress };
+
+    const noteCount = notes.length + (actionType === 'note_created' ? 1 : 0);
+    const completedTodoCount = todos.filter(t => t.completed).length + (actionType === 'todo_completed' ? 1 : 0);
+
+    missions.forEach(mission => {
+      if ((newMissionProgress[mission.id] || 0) >= mission.goal) return;
+
+      let currentProgress = 0;
+      if (mission.category === 'notes' && actionType === 'note_created') {
+        currentProgress = noteCount;
+      } else if (mission.category === 'todos' && actionType === 'todo_completed') {
+        currentProgress = completedTodoCount;
+      }
+
+      if (currentProgress > 0) {
+        const oldProgress = newMissionProgress[mission.id] || 0;
+        newMissionProgress[mission.id] = Math.min(currentProgress, mission.goal);
+
+        if (newMissionProgress[mission.id] >= mission.goal && oldProgress < mission.goal) {
+          newXp += mission.xp;
+        }
+      }
+    });
+
+    const xpForNextLevel = (newLevel + 1) * 100;
+    if (newLevel < 50 && newXp >= xpForNextLevel) {
+      newLevel += 1;
+    }
+
+    setUserProfile(prev => ({
+      ...prev,
+      xp: newXp,
+      level: newLevel,
+      missionProgress: newMissionProgress,
+    }));
+  };
 
   // Load dark mode preference
   useEffect(() => {
@@ -48,6 +99,31 @@ const AppContent = () => {
       document.documentElement.classList.remove('dark');
     }
   }, [darkMode]);
+
+  // Load user profile from local storage
+  useEffect(() => {
+    const savedProfile = localStorage.getItem('noteflow-user-profile');
+    if (savedProfile) {
+      const profile = JSON.parse(savedProfile);
+      const today = new Date().toISOString().split('T')[0];
+      if (profile.lastLogin !== today) {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        if (profile.lastLogin === yesterday.toISOString().split('T')[0]) {
+          profile.dailyStreak += 1;
+        } else {
+          profile.dailyStreak = 1;
+        }
+        profile.lastLogin = today;
+      }
+      setUserProfile(profile);
+    }
+  }, []);
+
+  // Save user profile to local storage
+  useEffect(() => {
+    localStorage.setItem('noteflow-user-profile', JSON.stringify(userProfile));
+  }, [userProfile]);
 
   if (loading) {
     return (
@@ -83,22 +159,12 @@ const AppContent = () => {
     switch (activeModule) {
       case 'notes':
         return (
-          <div className="flex-1 flex">
-            <div className="flex-1">
-              <NotesModule 
-                notes={filteredNotes} 
-                setNotes={setNotes} 
-                searchQuery={searchQuery}
-              />
-            </div>
-            <div className="w-80 border-l border-border p-6 bg-card">
-              <TodaysFocus 
-                todos={todos}
-                focusedTasks={focusedTasks}
-                setFocusedTasks={setFocusedTasks}
-              />
-            </div>
-          </div>
+          <NotesModule 
+            notes={filteredNotes} 
+            setNotes={setNotes} 
+            searchQuery={searchQuery}
+            onNoteCreated={() => handleUserAction('note_created')}
+          />
         );
       case 'todos':
         return (
@@ -108,6 +174,7 @@ const AppContent = () => {
             searchQuery={searchQuery}
             focusedTasks={focusedTasks}
             setFocusedTasks={setFocusedTasks}
+            onTodoCompleted={() => handleUserAction('todo_completed')}
           />
         );
       case 'locker':
@@ -119,6 +186,21 @@ const AppContent = () => {
         );
       case 'links':
         return <BookmarkManager />;
+      case 'achievements':
+        return (
+          <div className="flex-1 flex">
+            <div className="flex-1">
+              <AchievementsModule userProfile={userProfile} />
+            </div>
+            <div className="w-80 border-l border-border p-6 bg-card">
+              <TodaysFocus 
+                todos={todos}
+                focusedTasks={focusedTasks}
+                setFocusedTasks={setFocusedTasks}
+              />
+            </div>
+          </div>
+        );
       case 'settings':
         return (
           <div className="flex-1 p-8 bg-background">

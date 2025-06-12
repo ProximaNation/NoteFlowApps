@@ -24,6 +24,7 @@ export interface StoredFile {
   type: string;
   url: string;
   uploadedAt: Date;
+  isProtected?: boolean;
 }
 
 export interface StoredLink {

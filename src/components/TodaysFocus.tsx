@@ -20,7 +20,7 @@ const TodaysFocus = ({ todos, focusedTasks, setFocusedTasks }: TodaysFocusProps)
           {focusedTodos.map((todo) => (
             <div
               key={todo.id}
-              className={`p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg transition-all duration-300 ${
+              className={`p-3 bg-primary/10 border border-primary/20 rounded-lg transition-all duration-300 ${
                 todo.completed ? 'opacity-60' : ''
               }`}
             >
@@ -29,13 +29,13 @@ const TodaysFocus = ({ todos, focusedTasks, setFocusedTasks }: TodaysFocusProps)
                   className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${
                     todo.completed 
                       ? 'bg-green-500 border-green-500' 
-                      : 'border-yellow-400 hover:border-yellow-500'
+                      : 'border-primary/50 hover:border-primary'
                   }`}
                 >
                   {todo.completed && <Check size={12} className="text-white" />}
                 </button>
-                <span className={`text-sm font-medium ${
-                  todo.completed ? 'line-through text-muted-foreground' : 'text-card-foreground'
+                <span className={`text-sm font-medium text-foreground ${
+                  todo.completed ? 'line-through text-muted-foreground' : ''
                 }`}>
                   {todo.title}
                 </span>

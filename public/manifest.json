@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "NoteFlow",
+  "version": "1.0.0",
+  "description": "NoteFlow - Your Personal Note Management System",
+  "permissions": [
+    "bookmarks"
+  ],
+  "action": {
+    "default_popup": "index.html"
+  }
+} 

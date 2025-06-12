@@ -81,7 +81,7 @@ const LinksModule = ({ links, setLinks }: LinksModuleProps) => {
                 onClick={() => setFilter('all')}
                 className={`px-4 py-2 rounded-lg transition-colors ${
                   filter === 'all' 
-                    ? 'bg-yellow-600 text-white' 
+                    ? 'bg-primary text-primary-foreground' 
                     : 'bg-secondary text-secondary-foreground hover:bg-accent'
                 }`}
               >
@@ -91,7 +91,7 @@ const LinksModule = ({ links, setLinks }: LinksModuleProps) => {
                 onClick={() => setFilter('bookmarked')}
                 className={`px-4 py-2 rounded-lg transition-colors flex items-center space-x-2 ${
                   filter === 'bookmarked' 
-                    ? 'bg-yellow-600 text-white' 
+                    ? 'bg-primary text-primary-foreground' 
                     : 'bg-secondary text-secondary-foreground hover:bg-accent'
                 }`}
               >
@@ -102,7 +102,7 @@ const LinksModule = ({ links, setLinks }: LinksModuleProps) => {
           </div>
           <button
             onClick={() => setShowAddForm(true)}
-            className="bg-yellow-600 hover:bg-yellow-700 text-white px-6 py-3 rounded-lg flex items-center space-x-2 transition-colors duration-300"
+            className="bg-primary hover:bg-primary/90 text-primary-foreground px-6 py-3 rounded-lg flex items-center space-x-2 transition-colors duration-300"
           >
             <Plus size={20} />
             <span>Add Link</span>
@@ -118,25 +118,25 @@ const LinksModule = ({ links, setLinks }: LinksModuleProps) => {
                 placeholder="Link Title"
                 value={newLink.title}
                 onChange={(e) => setNewLink({ ...newLink, title: e.target.value })}
-                className="w-full px-4 py-3 border border-input rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent bg-background text-foreground"
+                className="w-full px-4 py-3 border border-input rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent bg-card text-foreground"
               />
               <input
                 type="url"
                 placeholder="https://example.com"
                 value={newLink.url}
                 onChange={(e) => setNewLink({ ...newLink, url: e.target.value })}
-                className="w-full px-4 py-3 border border-input rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent bg-background text-foreground"
+                className="w-full px-4 py-3 border border-input rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent bg-card text-foreground"
               />
               <textarea
                 placeholder="Description (optional)"
                 value={newLink.description}
                 onChange={(e) => setNewLink({ ...newLink, description: e.target.value })}
-                className="w-full px-4 py-3 border border-input rounded-lg focus:ring-2 focus:ring-yellow-500 focus:border-transparent bg-background text-foreground h-24 resize-none"
+                className="w-full px-4 py-3 border border-input rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent bg-card text-foreground h-24 resize-none"
               />
               <div className="flex space-x-3">
                 <button
                   onClick={addLink}
-                  className="bg-yellow-600 hover:bg-yellow-700 text-white px-6 py-3 rounded-lg transition-colors duration-300"
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground px-6 py-3 rounded-lg transition-colors duration-300"
                 >
                   Save Link
                 </button>
@@ -166,7 +166,7 @@ const LinksModule = ({ links, setLinks }: LinksModuleProps) => {
             {filter === 'all' && (
               <button
                 onClick={() => setShowAddForm(true)}
-                className="bg-yellow-600 hover:bg-yellow-700 text-white px-6 py-3 rounded-lg flex items-center space-x-2 mx-auto transition-colors duration-300"
+                className="bg-primary hover:bg-primary/90 text-primary-foreground px-6 py-3 rounded-lg flex items-center space-x-2 mx-auto transition-colors duration-300"
               >
                 <Plus size={20} />
                 <span>Add Your First Link</span>
@@ -178,7 +178,7 @@ const LinksModule = ({ links, setLinks }: LinksModuleProps) => {
             {filteredLinks.map((link) => (
               <div 
                 key={link.id} 
-                className="bg-card rounded-xl border border-border p-6 hover:shadow-xl transition-all duration-300 hover:border-yellow-400 hover:-translate-y-1 relative group"
+                className="bg-card rounded-xl border border-border p-6 hover:shadow-xl transition-all duration-300 hover:border-primary hover:-translate-y-1 relative group"
               >
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center space-x-3">
@@ -193,10 +193,10 @@ const LinksModule = ({ links, setLinks }: LinksModuleProps) => {
                             e.currentTarget.nextElementSibling?.classList.remove('hidden');
                           }}
                         />
-                        <LinkIcon size={40} className="text-yellow-600 hidden p-2 bg-yellow-100 dark:bg-yellow-900 rounded-lg" />
+                        <LinkIcon size={40} className="text-primary hidden p-2 bg-primary/10 rounded-lg" />
                       </div>
                     ) : (
-                      <LinkIcon size={40} className="text-yellow-600 p-2 bg-yellow-100 dark:bg-yellow-900 rounded-lg" />
+                      <LinkIcon size={40} className="text-primary p-2 bg-primary/10 rounded-lg" />
                     )}
                     <div className="flex-1">
                       <div className="flex items-center space-x-2">
@@ -214,15 +214,15 @@ const LinksModule = ({ links, setLinks }: LinksModuleProps) => {
                       onClick={() => toggleBookmark(link.id)}
                       className={`p-2 rounded-lg transition-colors ${
                         link.bookmarked 
-                          ? 'text-yellow-500 bg-yellow-100 dark:bg-yellow-900' 
-                          : 'text-muted-foreground hover:text-yellow-500 hover:bg-yellow-100 dark:hover:bg-yellow-900'
+                          ? 'text-yellow-500 bg-yellow-500/10' 
+                          : 'text-muted-foreground hover:text-yellow-500 hover:bg-yellow-500/10'
                       }`}
                     >
                       <Star size={16} className={link.bookmarked ? 'fill-current' : ''} />
                     </button>
                     <button
                       onClick={() => deleteLink(link.id)}
-                      className="p-2 text-red-500 hover:text-red-700 hover:bg-red-100 dark:hover:bg-red-900 rounded-lg transition-colors"
+                      className="p-2 text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
                     >
                       <Trash2 size={16} />
                     </button>
@@ -247,7 +247,7 @@ const LinksModule = ({ links, setLinks }: LinksModuleProps) => {
                   href={link.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-3 rounded-lg flex items-center justify-center space-x-2 text-sm transition-all duration-300 hover:scale-105 font-medium"
+                  className="bg-primary hover:bg-primary/90 text-primary-foreground px-4 py-3 rounded-lg flex items-center justify-center space-x-2 text-sm transition-all duration-300 hover:scale-105 font-medium"
                 >
                   <ExternalLink size={16} />
                   <span>Visit Link</span>

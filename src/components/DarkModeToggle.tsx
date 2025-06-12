@@ -10,7 +10,7 @@ interface DarkModeToggleProps {
 
 const DarkModeToggle = ({ darkMode, setDarkMode }: DarkModeToggleProps) => {
   return (
-    <div className="flex items-center space-x-2 p-2 rounded-lg bg-card dark:bg-card border border-border dark:border-border">
+    <div className="flex items-center space-x-2 p-2 rounded-lg bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
       <Sun size={16} className="text-yellow-500 dark:text-yellow-400" />
       <Switch
         checked={darkMode}

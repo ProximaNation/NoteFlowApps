@@ -7,9 +7,10 @@ interface NotesModuleProps {
   notes: Note[];
   setNotes: (notes: Note[]) => void;
   searchQuery: string;
+  onNoteCreated: () => void;
 }
 
-const NotesModule = ({ notes, setNotes, searchQuery }: NotesModuleProps) => {
+const NotesModule = ({ notes, setNotes, searchQuery, onNoteCreated }: NotesModuleProps) => {
   const [activeNote, setActiveNote] = useState<Note | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState('');
@@ -29,6 +30,7 @@ const NotesModule = ({ notes, setNotes, searchQuery }: NotesModuleProps) => {
     setIsEditing(true);
     setEditTitle(newNote.title);
     setEditContent(newNote.content);
+    onNoteCreated();
   };
 
   const deleteNote = (noteId: string) => {
@@ -84,11 +86,11 @@ const NotesModule = ({ notes, setNotes, searchQuery }: NotesModuleProps) => {
   return (
     <div className="flex h-full">
       {/* Notes List */}
-      <div className="w-80 border-r border-gray-200 bg-gray-50 flex flex-col">
-        <div className="p-4 border-b border-gray-200 bg-white">
+      <div className="w-80 border-r border-border bg-card flex flex-col">
+        <div className="p-4 border-b border-border bg-background">
           <button
             onClick={createNote}
-            className="w-full flex items-center space-x-2 px-4 py-3 bg-black text-white rounded-lg hover:bg-gray-800 transition-all duration-300 hover:scale-[1.02]"
+            className="w-full flex items-center justify-center space-x-2 px-4 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-all duration-300 hover:scale-[1.02]"
           >
             <Plus size={18} />
             <span>New Note</span>
@@ -100,8 +102,8 @@ const NotesModule = ({ notes, setNotes, searchQuery }: NotesModuleProps) => {
             <div
               key={note.id}
               onClick={() => setActiveNote(note)}
-              className={`p-4 bg-white rounded-lg border border-gray-200 cursor-pointer transition-all duration-300 hover:shadow-md hover:scale-[1.02] ${
-                activeNote?.id === note.id ? 'ring-2 ring-black' : ''
+              className={`p-4 bg-background rounded-lg border border-border cursor-pointer transition-all duration-300 hover:shadow-md hover:scale-[1.02] ${
+                activeNote?.id === note.id ? 'ring-2 ring-primary' : ''
               }`}
             >
               <div className="flex items-start justify-between mb-2">
@@ -165,7 +167,7 @@ const NotesModule = ({ notes, setNotes, searchQuery }: NotesModuleProps) => {
       <div className="flex-1 flex flex-col">
         {activeNote ? (
           <>
-            <div className="border-b border-gray-200 p-4 bg-white">
+            <div className="border-b border-border p-4 bg-background">
               <div className="flex items-center justify-between">
                 <div className="flex-1">
                   {isEditing ? (
@@ -173,7 +175,7 @@ const NotesModule = ({ notes, setNotes, searchQuery }: NotesModuleProps) => {
                       type="text"
                       value={editTitle}
                       onChange={(e) => setEditTitle(e.target.value)}
-                      className="text-xl font-bold w-full border-none outline-none"
+                      className="text-xl font-bold w-full border-none outline-none bg-transparent text-foreground"
                       placeholder="Note title..."
                     />
                   ) : (
@@ -207,12 +209,12 @@ const NotesModule = ({ notes, setNotes, searchQuery }: NotesModuleProps) => {
                 <textarea
                   value={editContent}
                   onChange={(e) => setEditContent(e.target.value)}
-                  className="w-full h-full resize-none border-none outline-none text-gray-800 leading-relaxed"
+                  className="w-full h-full resize-none border-none outline-none bg-transparent text-foreground leading-relaxed"
                   placeholder="Start writing your note..."
                 />
               ) : (
                 <div className="prose max-w-none">
-                  <div className="whitespace-pre-wrap text-gray-800 leading-relaxed">
+                  <div className="whitespace-pre-wrap text-foreground leading-relaxed">
                     {activeNote.content || 'This note is empty. Click Edit to start writing.'}
                   </div>
                 </div>
@@ -220,9 +222,9 @@ const NotesModule = ({ notes, setNotes, searchQuery }: NotesModuleProps) => {
             </div>
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center text-gray-500">
+          <div className="flex-1 flex items-center justify-center text-muted-foreground">
             <div className="text-center">
-              <StickyNote size={64} className="mx-auto mb-4 text-gray-300" />
+              <StickyNote size={64} className="mx-auto mb-4 text-border" />
               <p className="text-lg">Select a note to view or create a new one</p>
             </div>
           </div>

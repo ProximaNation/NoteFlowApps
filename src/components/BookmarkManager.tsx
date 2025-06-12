@@ -236,14 +236,14 @@ const BookmarkManager = () => {
           <div className="flex space-x-3">
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center justify-center space-x-2 transition-colors"
             >
               <Upload size={18} />
               <span>Import</span>
             </button>
             <button
               onClick={() => setShowAddForm(true)}
-              className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+              className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg flex items-center justify-center space-x-2 transition-colors"
             >
               <Plus size={18} />
               <span>Add Link</span>
