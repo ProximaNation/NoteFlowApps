@@ -1,7 +1,8 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Upload, Download, Trash2, File, Image, Video, FileText, FolderOpen, Lock, Eye, EyeOff, Shield, Cloud, KeyRound } from 'lucide-react';
 import { StoredFile } from '../types';
 import { useGoogleDrive } from '@/services/googleDrive';
+import { passwordManager } from '@/services/passwordManager';
 import GoogleDriveConnect from './GoogleDriveConnect';
 
 interface SecureLockerModuleProps {
@@ -22,12 +23,20 @@ const SecureLockerModule = ({ files, setFiles }: SecureLockerModuleProps) => {
 
   // Master password states
   const [isMasterPasswordSet, setIsMasterPasswordSet] = useState(false);
+  const [isUnlocked, setIsUnlocked] = useState(false);
   const [masterPassword, setMasterPassword] = useState('');
   const [confirmMasterPassword, setConfirmMasterPassword] = useState('');
   const [masterPasswordError, setMasterPasswordError] = useState('');
   const [showMasterPassword, setShowMasterPassword] = useState(false);
 
   const { uploadFile, downloadFile, getAccessToken, listFiles: listDriveFiles } = useGoogleDrive();
+
+  useEffect(() => {
+    // Check if master password is already set
+    const hasPassword = passwordManager.hasMasterPassword();
+    setIsMasterPasswordSet(hasPassword);
+    setIsUnlocked(!hasPassword); // If no password is set, the locker is unlocked by default
+  }, []);
 
   const handleGoogleDriveConnect = async (accessToken: string) => {
     try {
@@ -64,8 +73,28 @@ const SecureLockerModule = ({ files, setFiles }: SecureLockerModuleProps) => {
       setMasterPasswordError('Password must be at least 8 characters long.');
       return;
     }
-    setIsMasterPasswordSet(true);
-    setMasterPasswordError('');
+
+    try {
+      passwordManager.setMasterPassword(masterPassword);
+      setIsMasterPasswordSet(true);
+      setIsUnlocked(true);
+      setMasterPasswordError('');
+      setMasterPassword('');
+      setConfirmMasterPassword('');
+    } catch (error) {
+      console.error('Error setting master password:', error);
+      setMasterPasswordError('Failed to set master password. Please try again.');
+    }
+  };
+
+  const handleUnlockLocker = () => {
+    if (passwordManager.verifyPassword(masterPassword)) {
+      setIsUnlocked(true);
+      setMasterPassword('');
+      setMasterPasswordError('');
+    } else {
+      setMasterPasswordError('Incorrect password. Please try again.');
+    }
   };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -214,6 +243,107 @@ const SecureLockerModule = ({ files, setFiles }: SecureLockerModuleProps) => {
     );
   };
 
+  // Render password setup screen
+  if (!isMasterPasswordSet) {
+    return (
+      <div className="text-center py-24 bg-card border-2 border-dashed border-border rounded-lg">
+        <KeyRound size={64} className="mx-auto text-muted-foreground mb-4" />
+        <h3 className="text-2xl font-semibold text-foreground mb-2">Set Your Locker Password</h3>
+        <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+          Create a master password to secure your locker. You will need this to access your files.
+        </p>
+        
+        {masterPasswordError && (
+          <div className="text-red-600 mb-4">
+            {masterPasswordError}
+          </div>
+        )}
+
+        <div className="max-w-md mx-auto space-y-4">
+          <div className="relative">
+            <input
+              type={showMasterPassword ? 'text' : 'password'}
+              value={masterPassword}
+              onChange={(e) => setMasterPassword(e.target.value)}
+              placeholder="Enter master password"
+              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              onClick={() => setShowMasterPassword(!showMasterPassword)}
+              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500"
+            >
+              {showMasterPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+            </button>
+          </div>
+
+          <div className="relative">
+            <input
+              type={showMasterPassword ? 'text' : 'password'}
+              value={confirmMasterPassword}
+              onChange={(e) => setConfirmMasterPassword(e.target.value)}
+              placeholder="Confirm master password"
+              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <button
+            onClick={handleSetMasterPassword}
+            disabled={!masterPassword || !confirmMasterPassword}
+            className="w-full bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Set Password
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Render unlock screen
+  if (!isUnlocked) {
+    return (
+      <div className="text-center py-24 bg-card border-2 border-dashed border-border rounded-lg">
+        <Lock size={64} className="mx-auto text-muted-foreground mb-4" />
+        <h3 className="text-2xl font-semibold text-foreground mb-2">Unlock Your Locker</h3>
+        <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+          Enter your master password to access your files.
+        </p>
+        
+        {masterPasswordError && (
+          <div className="text-red-600 mb-4">
+            {masterPasswordError}
+          </div>
+        )}
+
+        <div className="max-w-md mx-auto space-y-4">
+          <div className="relative">
+            <input
+              type={showMasterPassword ? 'text' : 'password'}
+              value={masterPassword}
+              onChange={(e) => setMasterPassword(e.target.value)}
+              placeholder="Enter master password"
+              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              onClick={() => setShowMasterPassword(!showMasterPassword)}
+              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500"
+            >
+              {showMasterPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+            </button>
+          </div>
+
+          <button
+            onClick={handleUnlockLocker}
+            disabled={!masterPassword}
+            className="w-full bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Unlock
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Render main locker interface
   return (
     <div className="p-8 bg-background text-foreground flex-1">
       <div className="max-w-7xl mx-auto">
@@ -232,94 +362,49 @@ const SecureLockerModule = ({ files, setFiles }: SecureLockerModuleProps) => {
             onConnect={handleGoogleDriveConnect}
             onDisconnect={handleGoogleDriveDisconnect}
           />
-        ) : !isMasterPasswordSet ? (
-          <div className="text-center py-24 bg-card border-2 border-dashed border-border rounded-lg">
-            <KeyRound size={64} className="mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-2xl font-semibold text-foreground mb-2">Set Your Locker Password</h3>
-            <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-              Create a master password to secure your locker. You will need this to access your files.
-            </p>
-
-            <div className="max-w-md mx-auto space-y-4">
-              <div className="relative">
-                <input
-                  type={showMasterPassword ? "text" : "password"}
-                  value={masterPassword}
-                  onChange={(e) => setMasterPassword(e.target.value)}
-                  placeholder="Enter master password"
-                  className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                />
-                <button
-                  onClick={() => setShowMasterPassword(!showMasterPassword)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2"
-                >
-                  {showMasterPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-                </button>
-              </div>
-
-              <div className="relative">
-                <input
-                  type={showMasterPassword ? "text" : "password"}
-                  value={confirmMasterPassword}
-                  onChange={(e) => setConfirmMasterPassword(e.target.value)}
-                  placeholder="Confirm master password"
-                  className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                />
-              </div>
-
-              {masterPasswordError && (
-                <p className="text-red-500 text-sm">{masterPasswordError}</p>
-              )}
-
-              <button
-                onClick={handleSetMasterPassword}
-                className="w-full bg-primary text-primary-foreground px-6 py-2 rounded-lg hover:bg-primary/90 transition-colors"
-              >
-                Set Password
-              </button>
-            </div>
-          </div>
         ) : (
-          <div className="space-y-6">
-            <div className="flex justify-between items-center">
-              <h2 className="text-xl font-semibold">Your Files</h2>
+          <div>
+            <div className="mb-8">
               <div className="flex items-center space-x-4">
-                <div className="flex items-center space-x-2">
+                <div className="flex-1">
                   <input
-                    type="checkbox"
-                    id="protectWithPassword"
-                    checked={protectWithPassword}
-                    onChange={(e) => setProtectWithPassword(e.target.checked)}
-                    className="rounded border-gray-300"
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileUpload}
+                    multiple
+                    className="hidden"
                   />
-                  <label htmlFor="protectWithPassword" className="text-sm">
-                    Protect with password
-                  </label>
-                </div>
-                {protectWithPassword && (
-                  <div className="relative">
-                    <input
-                      type={showFilePassword ? "text" : "password"}
-                      value={filePassword}
-                      onChange={(e) => setFilePassword(e.target.value)}
-                      placeholder="Enter file password"
-                      className="px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                    />
-                    <button
-                      onClick={() => setShowFilePassword(!showFilePassword)}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2"
-                    >
-                      {showFilePassword ? <EyeOff size={20} /> : <Eye size={20} />}
-                    </button>
+                  <div className="flex items-center space-x-4">
+                    <div className="flex-1">
+                      <label className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          checked={protectWithPassword}
+                          onChange={(e) => setProtectWithPassword(e.target.checked)}
+                          className="form-checkbox h-4 w-4 text-blue-600"
+                        />
+                        <span>Protect files with password</span>
+                      </label>
+                      {protectWithPassword && (
+                        <div className="mt-2 relative">
+                          <input
+                            type={showFilePassword ? 'text' : 'password'}
+                            value={filePassword}
+                            onChange={(e) => setFilePassword(e.target.value)}
+                            placeholder="Enter file password"
+                            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                          <button
+                            onClick={() => setShowFilePassword(!showFilePassword)}
+                            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500"
+                          >
+                            {showFilePassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                )}
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleFileUpload}
-                  className="hidden"
-                  multiple
-                />
+                </div>
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   disabled={uploading || (protectWithPassword && !filePassword)}
