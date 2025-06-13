@@ -63,8 +63,21 @@ export function GoogleDriveConnect() {
       setFiles(pageToken ? [...files, ...result.files] : result.files);
       setNextPageToken(result.nextPageToken);
     } catch (err) {
-      setError('Failed to load files');
+      setError('Failed to load files. Please try reconnecting.');
       console.error('Error loading files:', err);
+      // Attempt reconnection
+      if (!isConnected) {
+        try {
+          const storedToken = localStorage.getItem('googleDriveToken');
+          if (storedToken) {
+            setToken(storedToken);
+            setIsConnected(true);
+            await loadFiles();
+          }
+        } catch (reconnectError) {
+          console.error('Reconnection failed:', reconnectError);
+        }
+      }
     } finally {
       setIsLoading(false);
     }
