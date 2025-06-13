@@ -1,6 +1,7 @@
 import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
 import CryptoJS from 'crypto-js';
+import { useGoogleLogin } from '@react-oauth/google';
 
 const CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 const CLIENT_SECRET = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_SECRET;
@@ -24,30 +25,71 @@ export interface GoogleDriveFile {
   createdTime: string;
   modifiedTime: string;
   size?: string;
+  isEncrypted?: boolean;
+  thumbnailLink?: string;
+  iconLink?: string;
+  description?: string;
+  starred?: boolean;
+  trashed?: boolean;
+  parents?: string[];
 }
 
 class GoogleDriveService {
   private drive = google.drive({ version: 'v3', auth: oauth2Client });
   private token: string | null = null;
+  private tokenExpiry: number | null = null;
+  private refreshToken: string | null = null;
 
-  setToken(token: string) {
+  setToken(token: string, expiry?: number, refreshToken?: string) {
     this.token = token;
-    oauth2Client.setCredentials({ access_token: token });
+    this.tokenExpiry = expiry || null;
+    this.refreshToken = refreshToken || null;
+    oauth2Client.setCredentials({ 
+      access_token: token,
+      expiry_date: expiry,
+      refresh_token: refreshToken
+    });
   }
 
-  async listFiles(pageSize: number = 10, pageToken?: string): Promise<{
+  private async ensureValidToken(): Promise<string> {
+    if (!this.token) {
+      throw new Error('No access token available');
+    }
+
+    // Check if token is expired or about to expire (within 5 minutes)
+    if (this.tokenExpiry && this.tokenExpiry - Date.now() < 300000) {
+      if (!this.refreshToken) {
+        throw new Error('Token expired and no refresh token available');
+      }
+
+      try {
+        const { credentials } = await oauth2Client.refreshAccessToken();
+        this.setToken(
+          credentials.access_token!,
+          credentials.expiry_date,
+          credentials.refresh_token || this.refreshToken
+        );
+        return credentials.access_token!;
+      } catch (error) {
+        console.error('Error refreshing token:', error);
+        throw new Error('Failed to refresh access token');
+      }
+    }
+
+    return this.token;
+  }
+
+  async listFiles(pageSize: number = 10, pageToken?: string, query?: string): Promise<{
     files: GoogleDriveFile[];
     nextPageToken?: string;
   }> {
     try {
-      if (!this.token) {
-        throw new Error('No access token available');
-      }
-
+      const token = await this.ensureValidToken();
       const response = await this.drive.files.list({
         pageSize,
         pageToken,
-        fields: 'nextPageToken, files(id, name, mimeType, webViewLink, createdTime, modifiedTime, size)',
+        q: query,
+        fields: 'nextPageToken, files(id, name, mimeType, webViewLink, createdTime, modifiedTime, size, thumbnailLink, iconLink, description, starred, trashed, parents)',
         orderBy: 'modifiedTime desc',
       });
 
@@ -61,15 +103,15 @@ class GoogleDriveService {
     }
   }
 
-  async uploadFile(file: File, folderId?: string): Promise<GoogleDriveFile> {
+  async uploadFile(file: File, folderId?: string, metadata?: Record<string, any>): Promise<GoogleDriveFile> {
     try {
-      if (!this.token) {
-        throw new Error('No access token available');
-      }
+      const token = await this.ensureValidToken();
 
       const fileMetadata = {
         name: file.name,
         parents: folderId ? [folderId] : undefined,
+        description: metadata?.description,
+        properties: metadata?.properties,
       };
 
       const media = {
@@ -80,7 +122,7 @@ class GoogleDriveService {
       const response = await this.drive.files.create({
         requestBody: fileMetadata,
         media,
-        fields: 'id, name, mimeType, webViewLink, createdTime, modifiedTime, size',
+        fields: 'id, name, mimeType, webViewLink, createdTime, modifiedTime, size, thumbnailLink, iconLink, description, starred, trashed, parents',
       });
 
       return response.data as GoogleDriveFile;
@@ -92,10 +134,7 @@ class GoogleDriveService {
 
   async deleteFile(fileId: string): Promise<void> {
     try {
-      if (!this.token) {
-        throw new Error('No access token available');
-      }
-
+      const token = await this.ensureValidToken();
       await this.drive.files.delete({
         fileId,
       });
@@ -105,21 +144,20 @@ class GoogleDriveService {
     }
   }
 
-  async createFolder(name: string, parentFolderId?: string): Promise<GoogleDriveFile> {
+  async createFolder(name: string, parentFolderId?: string, description?: string): Promise<GoogleDriveFile> {
     try {
-      if (!this.token) {
-        throw new Error('No access token available');
-      }
+      const token = await this.ensureValidToken();
 
       const fileMetadata = {
         name,
         mimeType: 'application/vnd.google-apps.folder',
         parents: parentFolderId ? [parentFolderId] : undefined,
+        description,
       };
 
       const response = await this.drive.files.create({
         requestBody: fileMetadata,
-        fields: 'id, name, mimeType, webViewLink, createdTime, modifiedTime',
+        fields: 'id, name, mimeType, webViewLink, createdTime, modifiedTime, thumbnailLink, iconLink, description, starred, trashed, parents',
       });
 
       return response.data as GoogleDriveFile;
@@ -134,14 +172,11 @@ class GoogleDriveService {
     nextPageToken?: string;
   }> {
     try {
-      if (!this.token) {
-        throw new Error('No access token available');
-      }
-
+      const token = await this.ensureValidToken();
       const response = await this.drive.files.list({
-        q: `name contains '${query}'`,
+        q: `name contains '${query}' or fullText contains '${query}'`,
         pageSize,
-        fields: 'nextPageToken, files(id, name, mimeType, webViewLink, createdTime, modifiedTime, size)',
+        fields: 'nextPageToken, files(id, name, mimeType, webViewLink, createdTime, modifiedTime, size, thumbnailLink, iconLink, description, starred, trashed, parents)',
         orderBy: 'modifiedTime desc',
       });
 
@@ -157,19 +192,121 @@ class GoogleDriveService {
 
   async getFileMetadata(fileId: string): Promise<GoogleDriveFile> {
     try {
-      if (!this.token) {
-        throw new Error('No access token available');
-      }
-
+      const token = await this.ensureValidToken();
       const response = await this.drive.files.get({
         fileId,
-        fields: 'id, name, mimeType, webViewLink, createdTime, modifiedTime, size',
+        fields: 'id, name, mimeType, webViewLink, createdTime, modifiedTime, size, thumbnailLink, iconLink, description, starred, trashed, parents',
       });
 
       return response.data as GoogleDriveFile;
     } catch (error) {
       console.error('Error getting file metadata:', error);
       throw new Error('Failed to get file metadata from Google Drive');
+    }
+  }
+
+  async updateFileMetadata(fileId: string, metadata: Partial<GoogleDriveFile>): Promise<GoogleDriveFile> {
+    try {
+      const token = await this.ensureValidToken();
+      const response = await this.drive.files.update({
+        fileId,
+        requestBody: metadata,
+        fields: 'id, name, mimeType, webViewLink, createdTime, modifiedTime, size, thumbnailLink, iconLink, description, starred, trashed, parents',
+      });
+
+      return response.data as GoogleDriveFile;
+    } catch (error) {
+      console.error('Error updating file metadata:', error);
+      throw new Error('Failed to update file metadata in Google Drive');
+    }
+  }
+
+  async moveFile(fileId: string, newParentId: string): Promise<GoogleDriveFile> {
+    try {
+      const token = await this.ensureValidToken();
+      const file = await this.getFileMetadata(fileId);
+      const previousParents = file.parents?.join(',') || '';
+
+      const response = await this.drive.files.update({
+        fileId,
+        addParents: newParentId,
+        removeParents: previousParents,
+        fields: 'id, name, mimeType, webViewLink, createdTime, modifiedTime, size, thumbnailLink, iconLink, description, starred, trashed, parents',
+      });
+
+      return response.data as GoogleDriveFile;
+    } catch (error) {
+      console.error('Error moving file:', error);
+      throw new Error('Failed to move file in Google Drive');
+    }
+  }
+
+  async downloadFile(fileId: string): Promise<Blob> {
+    try {
+      const token = await this.ensureValidToken();
+      const response = await this.drive.files.get({
+        fileId,
+        alt: 'media',
+      }, {
+        responseType: 'arraybuffer',
+      });
+
+      return new Blob([response.data as ArrayBuffer], { type: response.headers['content-type'] });
+    } catch (error) {
+      console.error('Error downloading file:', error);
+      throw new Error('Failed to download file from Google Drive');
+    }
+  }
+
+  async getFileThumbnail(fileId: string, width: number = 200): Promise<string> {
+    try {
+      const token = await this.ensureValidToken();
+      const response = await this.drive.files.get({
+        fileId,
+        fields: 'thumbnailLink',
+      });
+
+      const thumbnailLink = response.data.thumbnailLink;
+      if (!thumbnailLink) {
+        throw new Error('No thumbnail available for this file');
+      }
+
+      return `${thumbnailLink}=w${width}`;
+    } catch (error) {
+      console.error('Error getting file thumbnail:', error);
+      throw new Error('Failed to get file thumbnail from Google Drive');
+    }
+  }
+
+  async starFile(fileId: string, starred: boolean = true): Promise<GoogleDriveFile> {
+    try {
+      const token = await this.ensureValidToken();
+      const response = await this.drive.files.update({
+        fileId,
+        requestBody: { starred },
+        fields: 'id, name, mimeType, webViewLink, createdTime, modifiedTime, size, thumbnailLink, iconLink, description, starred, trashed, parents',
+      });
+
+      return response.data as GoogleDriveFile;
+    } catch (error) {
+      console.error('Error starring file:', error);
+      throw new Error('Failed to star file in Google Drive');
+    }
+  }
+
+  async trashFile(fileId: string, trashed: boolean = true): Promise<GoogleDriveFile> {
+    try {
+      const token = await this.ensureValidToken();
+      const response = await this.drive.files.update({
+        fileId,
+        requestBody: { trashed },
+        fields: 'id, name, mimeType, webViewLink, createdTime, modifiedTime, size, thumbnailLink, iconLink, description, starred, trashed, parents',
+      });
+
+      return response.data as GoogleDriveFile;
+    } catch (error) {
+      console.error('Error trashing file:', error);
+      throw new Error('Failed to trash file in Google Drive');
     }
   }
 }
@@ -188,16 +325,29 @@ export const useGoogleDrive = () => {
           timestamp: new Date().toISOString()
         });
         localStorage.setItem('googleDriveToken', tokenResponse.access_token);
+        if (tokenResponse.expires_in) {
+          const expiry = Date.now() + (tokenResponse.expires_in * 1000);
+          localStorage.setItem('googleDriveTokenExpiry', expiry.toString());
+        }
+        // Store refresh token if available in the response
+        const refreshToken = (tokenResponse as any).refresh_token;
+        if (refreshToken) {
+          localStorage.setItem('googleDriveRefreshToken', refreshToken);
+        }
         return tokenResponse.access_token;
       } catch (error) {
         console.error('Error during Google Drive login:', error);
-        localStorage.removeItem('googleDriveToken'); // Clear invalid token
+        localStorage.removeItem('googleDriveToken');
+        localStorage.removeItem('googleDriveTokenExpiry');
+        localStorage.removeItem('googleDriveRefreshToken');
         throw error;
       }
     },
     onError: (error) => {
       console.error('Google Drive login failed:', error);
-      localStorage.removeItem('googleDriveToken'); // Clear invalid token
+      localStorage.removeItem('googleDriveToken');
+      localStorage.removeItem('googleDriveTokenExpiry');
+      localStorage.removeItem('googleDriveRefreshToken');
       throw error;
     },
     scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.appdata',
@@ -305,6 +455,8 @@ export const useGoogleDrive = () => {
         name: data.name,
         mimeType: data.mimeType,
         webViewLink: data.webViewLink,
+        createdTime: data.createdTime || new Date().toISOString(),
+        modifiedTime: data.modifiedTime || new Date().toISOString(),
         isEncrypted,
       };
     } catch (error) {
@@ -347,7 +499,7 @@ export const useGoogleDrive = () => {
   const listFiles = async (accessToken: string): Promise<GoogleDriveFile[]> => {
     try {
       const response = await fetch(
-        'https://www.googleapis.com/drive/v3/files?fields=files(id,name,mimeType,size,createdTime,modifiedTime,webViewLink,properties)',
+        'https://www.googleapis.com/drive/v3/files?fields=files(id,name,mimeType,size,createdTime,modifiedTime,webViewLink,properties,thumbnailLink,iconLink,description,starred,trashed,parents)',
         {
           headers: {
             'Authorization': `Bearer ${accessToken}`,
@@ -397,7 +549,7 @@ export const useGoogleDrive = () => {
   const getFile = async (fileId: string, accessToken: string): Promise<GoogleDriveFile> => {
     try {
       const response = await fetch(
-        `https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,size,createdTime,modifiedTime,webViewLink,properties`,
+        `https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name,mimeType,size,createdTime,modifiedTime,webViewLink,properties,thumbnailLink,iconLink,description,starred,trashed,parents`,
         {
           headers: {
             'Authorization': `Bearer ${accessToken}`,
@@ -443,6 +595,8 @@ export const useGoogleDrive = () => {
   const disconnect = (): void => {
     console.log('Disconnecting from Google Drive');
     localStorage.removeItem('googleDriveToken');
+    localStorage.removeItem('googleDriveTokenExpiry');
+    localStorage.removeItem('googleDriveRefreshToken');
   };
 
   return {
