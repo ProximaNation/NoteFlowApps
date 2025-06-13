@@ -1,37 +1,25 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Upload, Download, Trash2, File, Image, Video, FileText, FolderOpen, Lock, Eye, EyeOff, Shield, Cloud, KeyRound } from 'lucide-react';
-import { StoredFile } from '../types';
-import { useGoogleDrive } from '@/services/googleDrive';
+import React, { useState, useEffect } from 'react';
 import { PasswordManager } from '@/services/passwordManager';
-import GoogleDriveConnect from './GoogleDriveConnect';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Eye, EyeOff, Upload, Download, Trash2, Lock } from 'lucide-react';
+import { Note, Todo } from '@/types';
+import { db } from '@/services/indexedDB';
 
 interface SecureLockerModuleProps {
-  files: StoredFile[];
-  setFiles: (files: StoredFile[]) => void;
   children: React.ReactNode;
 }
 
-const SecureLockerModule = ({ files, setFiles, children }: SecureLockerModuleProps) => {
-  const [uploading, setUploading] = useState(false);
-  const [downloading, setDownloading] = useState<string | null>(null);
-  const [filePassword, setFilePassword] = useState('');
-  const [showFilePassword, setShowFilePassword] = useState(false);
-  const [protectWithPassword, setProtectWithPassword] = useState(false);
-  const [previewFile, setPreviewFile] = useState<StoredFile | null>(null);
-  const [isGoogleDriveConnected, setIsGoogleDriveConnected] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Master password states
+export function SecureLockerModule({ children }: SecureLockerModuleProps) {
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const [isSetup, setIsSetup] = useState(false);
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [todos, setTodos] = useState<Todo[]>([]);
 
-  const { uploadFile, downloadFile, getAccessToken, listFiles: listDriveFiles } = useGoogleDrive();
   const passwordManager = PasswordManager.getInstance();
 
   useEffect(() => {
@@ -52,30 +40,24 @@ const SecureLockerModule = ({ files, setFiles, children }: SecureLockerModulePro
     checkAccess();
   }, []);
 
-  const handleGoogleDriveConnect = async (accessToken: string) => {
-    try {
-      setIsGoogleDriveConnected(true);
-      // Load existing files from Google Drive
-      const driveFiles = await listDriveFiles(accessToken);
-      const storedFiles: StoredFile[] = driveFiles.map(file => ({
-        id: file.id,
-        name: file.name,
-        size: file.size || 0,
-        type: file.mimeType,
-        url: file.webViewLink || `https://drive.google.com/file/d/${file.id}/view`,
-        uploadedAt: new Date(file.createdTime || Date.now()),
-        isProtected: file.isEncrypted || false,
-      }));
-      setFiles(storedFiles);
-    } catch (error) {
-      console.error('Error loading files from Google Drive:', error);
-      setError('Failed to load files from Google Drive. Please try reconnecting.');
+  useEffect(() => {
+    if (isUnlocked) {
+      loadData();
     }
-  };
+  }, [isUnlocked]);
 
-  const handleGoogleDriveDisconnect = () => {
-    setIsGoogleDriveConnected(false);
-    setFiles([]);
+  const loadData = async () => {
+    try {
+      const [loadedNotes, loadedTodos] = await Promise.all([
+        db.getAllNotes(),
+        db.getAllTodos(),
+      ]);
+      setNotes(loadedNotes);
+      setTodos(loadedTodos);
+    } catch (err) {
+      console.error('Error loading data:', err);
+      setError('Failed to load data. Please try again.');
+    }
   };
 
   const handleUnlock = async (e: React.FormEvent) => {
@@ -114,152 +96,6 @@ const SecureLockerModule = ({ files, setFiles, children }: SecureLockerModulePro
     }
   };
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = event.target.files;
-    if (!selectedFiles) return;
-
-    setUploading(true);
-    setError(null);
-    const newFiles: StoredFile[] = [];
-
-    const accessToken = getAccessToken();
-    if (!accessToken) {
-      setError('Google Drive is not connected. Please connect first.');
-      setUploading(false);
-      return;
-    }
-
-    try {
-      for (const file of Array.from(selectedFiles)) {
-        const uploadedFile = await uploadFile(
-          file, 
-          accessToken, 
-          protectWithPassword ? filePassword : undefined
-        );
-        
-        const storedFile: StoredFile = {
-          id: uploadedFile.id,
-          name: uploadedFile.name,
-          size: file.size,
-          type: uploadedFile.mimeType,
-          url: uploadedFile.webViewLink || `https://drive.google.com/file/d/${uploadedFile.id}/view`,
-          uploadedAt: new Date(),
-          isProtected: uploadedFile.isEncrypted || false,
-        };
-
-        newFiles.push(storedFile);
-      }
-
-      setFiles([...files, ...newFiles]);
-      setFilePassword('');
-      setProtectWithPassword(false);
-    } catch (error) {
-      console.error('Upload failed:', error);
-      setError('Upload failed. Please try again.');
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    }
-  };
-
-  const handleFileDownload = async (file: StoredFile) => {
-    try {
-      setDownloading(file.id);
-      setError(null);
-
-      const accessToken = getAccessToken();
-      if (!accessToken) {
-        throw new Error('Google Drive is not connected');
-      }
-
-      let password: string | undefined;
-      if (file.isProtected) {
-        password = prompt('Enter password to decrypt file:');
-        if (!password) {
-          throw new Error('Password is required for encrypted file');
-        }
-      }
-
-      const blob = await downloadFile(file.id, accessToken, password);
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = file.name;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-    } catch (error) {
-      console.error('Download failed:', error);
-      setError(error instanceof Error ? error.message : 'Download failed');
-    } finally {
-      setDownloading(null);
-    }
-  };
-
-  const deleteFile = (id: string) => {
-    setFiles(files.filter(file => file.id !== id));
-  };
-
-  const formatFileSize = (bytes: number) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
-
-  const getFileIcon = (type: string) => {
-    if (type.startsWith('image/')) return Image;
-    if (type.startsWith('video/')) return Video;
-    if (type.includes('text') || type.includes('document') || type.includes('pdf')) return FileText;
-    return File;
-  };
-
-  const canPreview = (type: string) => {
-    return type.startsWith('image/') || type.startsWith('video/') || type.includes('pdf') || type.includes('text');
-  };
-
-  const renderFilePreview = (file: StoredFile) => {
-    if (!canPreview(file.type)) return null;
-
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-        <div className="bg-card dark:bg-card rounded-lg max-w-4xl max-h-full overflow-auto">
-          <div className="p-4 border-b border-border dark:border-border flex justify-between items-center">
-            <h3 className="font-semibold text-card-foreground dark:text-card-foreground">{file.name}</h3>
-            <button
-              onClick={() => setPreviewFile(null)}
-              className="text-muted-foreground hover:text-card-foreground dark:text-muted-foreground dark:hover:text-card-foreground"
-            >
-              ✕
-            </button>
-          </div>
-          <div className="p-4">
-            {file.type.startsWith('image/') && (
-              <img src={file.url} alt={file.name} className="max-w-full max-h-96 object-contain mx-auto" />
-            )}
-            {file.type.startsWith('video/') && (
-              <video controls className="max-w-full max-h-96 mx-auto">
-                <source src={file.url} type={file.type} />
-              </video>
-            )}
-            {file.type.includes('pdf') && (
-              <iframe src={file.url} className="w-full h-96 border-0" title={file.name} />
-            )}
-            {file.type.includes('text') && (
-              <div className="bg-muted dark:bg-muted p-4 rounded-lg">
-                <p className="text-muted-foreground dark:text-muted-foreground">Text file preview not available. Click download to view content.</p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -268,56 +104,103 @@ const SecureLockerModule = ({ files, setFiles, children }: SecureLockerModulePro
     );
   }
 
-  if (isUnlocked) {
-    return <>{children}</>;
+  if (!isUnlocked) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <div className="w-full max-w-md p-6 space-y-6 bg-card rounded-lg shadow-lg">
+          <div className="space-y-2 text-center">
+            <h1 className="text-2xl font-bold">
+              {isSetup ? 'Unlock Secure Locker' : 'Set Up Secure Locker'}
+            </h1>
+            <p className="text-muted-foreground">
+              {isSetup
+                ? 'Enter your password to access your secure files'
+                : 'Create a password to protect your secure files'}
+            </p>
+          </div>
+
+          <form onSubmit={isSetup ? handleUnlock : handleSetup} className="space-y-4">
+            <div className="space-y-2">
+              <div className="relative">
+                <Input
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Enter password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
+              {error && <p className="text-sm text-destructive">{error}</p>}
+            </div>
+
+            <Button type="submit" className="w-full">
+              {isSetup ? 'Unlock' : 'Set Password'}
+            </Button>
+          </form>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-background">
-      <div className="w-full max-w-md p-6 space-y-6 bg-card rounded-lg shadow-lg">
-        <div className="space-y-2 text-center">
-          <h1 className="text-2xl font-bold">
-            {isSetup ? 'Unlock Secure Locker' : 'Set Up Secure Locker'}
-          </h1>
-          <p className="text-muted-foreground">
-            {isSetup
-              ? 'Enter your password to access your secure files'
-              : 'Create a password to protect your secure files'}
-          </p>
-        </div>
-
-        <form onSubmit={isSetup ? handleUnlock : handleSetup} className="space-y-4">
-          <div className="space-y-2">
-            <div className="relative">
-              <Input
-                type={showPassword ? 'text' : 'password'}
-                placeholder="Enter password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="pr-10"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-                {showPassword ? (
-                  <EyeOff className="h-4 w-4" />
-                ) : (
-                  <Eye className="h-4 w-4" />
-                )}
-              </button>
+    <div className="container mx-auto p-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <section>
+          <h2 className="text-2xl font-semibold mb-4">Your Notes ({notes.length})</h2>
+          {notes.length === 0 ? (
+            <p className="text-muted-foreground">No notes yet. Create your first note!</p>
+          ) : (
+            <div className="space-y-4">
+              {notes.map(note => (
+                <div
+                  key={note.id}
+                  className="p-4 rounded-lg border bg-card text-card-foreground shadow-sm"
+                >
+                  <h3 className="font-medium mb-2">{note.title}</h3>
+                  <p className="text-muted-foreground line-clamp-2">{note.content}</p>
+                </div>
+              ))}
             </div>
-            {error && <p className="text-sm text-destructive">{error}</p>}
-          </div>
+          )}
+        </section>
 
-          <Button type="submit" className="w-full">
-            {isSetup ? 'Unlock' : 'Set Password'}
-          </Button>
-        </form>
+        <section>
+          <h2 className="text-2xl font-semibold mb-4">Your Todos ({todos.length})</h2>
+          {todos.length === 0 ? (
+            <p className="text-muted-foreground">No todos yet. Add your first task!</p>
+          ) : (
+            <div className="space-y-2">
+              {todos.map(todo => (
+                <div
+                  key={todo.id}
+                  className="flex items-center gap-3 p-3 rounded-lg border bg-card text-card-foreground shadow-sm"
+                >
+                  <input
+                    type="checkbox"
+                    checked={todo.completed}
+                    className="h-4 w-4"
+                    readOnly
+                  />
+                  <span className={todo.completed ? 'line-through text-muted-foreground' : ''}>
+                    {todo.title}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       </div>
     </div>
   );
-};
-
-export default SecureLockerModule;
+}
