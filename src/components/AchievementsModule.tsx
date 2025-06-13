@@ -2,8 +2,9 @@ import React from 'react';
 import { UserProfile } from '../types/gamification';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { missions, Mission } from '../lib/missions';
-import { Trophy, Star, ShieldCheck, Share2 } from 'lucide-react';
+import { Trophy, Star, ShieldCheck, Share2, Award } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { Badge } from '../components/ui/badge';
 
 interface AchievementsModuleProps {
   userProfile: UserProfile;
@@ -25,8 +26,19 @@ const AchievementsModule: React.FC<AchievementsModuleProps> = ({ userProfile }) 
       <div key={mission.id} className={`p-4 rounded-lg mb-3 transition-all duration-300 ${isCompleted ? 'bg-green-500/10 border border-green-500/20' : 'bg-card border border-border'}`}>
         <div className="flex items-center justify-between">
           <div className="flex-1">
-            <p className={`font-bold ${isCompleted ? 'text-green-600' : 'text-foreground'}`}>{mission.title}</p>
+            <div className="flex items-center gap-2">
+              {mission.badge && (
+                <span className="text-2xl">{mission.badge}</span>
+              )}
+              <p className={`font-bold ${isCompleted ? 'text-green-600' : 'text-foreground'}`}>{mission.title}</p>
+            </div>
             <p className="text-sm text-muted-foreground mt-1">{mission.description}</p>
+            {isCompleted && mission.reward && (
+              <Badge variant="secondary" className="mt-2">
+                <Award className="w-3 h-3 mr-1" />
+                {mission.reward}
+              </Badge>
+            )}
           </div>
           <div className="text-right ml-4 flex-shrink-0">
             <p className={`font-bold text-lg ${isCompleted ? 'text-green-600' : 'text-yellow-500'}`}>{mission.xp} XP</p>
@@ -59,11 +71,15 @@ const AchievementsModule: React.FC<AchievementsModuleProps> = ({ userProfile }) 
     );
   };
 
+  const completedMissions = missions.filter(m => (missionProgress[m.id] || 0) >= m.goal);
+  const totalMissions = missions.length;
+  const completionPercentage = Math.round((completedMissions.length / totalMissions) * 100);
+
   return (
     <div className="flex-1 p-8 bg-background text-foreground">
       <h1 className="text-3xl font-bold mb-8">Achievements</h1>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Your Rank</CardTitle>
@@ -95,6 +111,16 @@ const AchievementsModule: React.FC<AchievementsModuleProps> = ({ userProfile }) 
           <CardContent>
             <div className="text-2xl font-bold">{dailyStreak} Days</div>
             <p className="text-xs text-muted-foreground">Login tomorrow to continue!</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Mission Progress</CardTitle>
+            <Award className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{completionPercentage}%</div>
+            <p className="text-xs text-muted-foreground">{completedMissions.length} of {totalMissions} completed</p>
           </CardContent>
         </Card>
       </div>

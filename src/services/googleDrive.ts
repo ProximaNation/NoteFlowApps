@@ -19,7 +19,10 @@ export const useGoogleDrive = () => {
         if (!tokenResponse.access_token) {
           throw new Error('No access token received from Google');
         }
-        console.log('Received token response:', tokenResponse);
+        console.log('OAuth flow successful:', {
+          hasToken: !!tokenResponse.access_token,
+          timestamp: new Date().toISOString()
+        });
         localStorage.setItem('googleDriveToken', tokenResponse.access_token);
         return tokenResponse.access_token;
       } catch (error) {
