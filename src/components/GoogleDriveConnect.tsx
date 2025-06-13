@@ -1,62 +1,56 @@
 import React, { useState, useEffect } from 'react';
-import { Cloud, RefreshCw } from 'lucide-react';
-import { useGoogleDrive, GoogleDriveFile } from '@/services/googleDrive';
-import { Button } from './ui/button';
-import { Loader2 } from 'lucide-react';
+import { Cloud, Shield } from 'lucide-react';
+import { useGoogleDrive } from '@/services/googleDrive';
 
-export function GoogleDriveConnect() {
+interface GoogleDriveConnectProps {
+  onConnect?: (accessToken: string) => void;
+  onDisconnect?: () => void;
+}
+
+const GoogleDriveConnect: React.FC<GoogleDriveConnectProps> = ({ onConnect, onDisconnect }) => {
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [files, setFiles] = useState<GoogleDriveFile[]>([]);
-
-  const { login, isConnected: checkConnection, getAccessToken, disconnect: googleDisconnect, listFiles } = useGoogleDrive();
+  
+  const { login, isConnected: checkConnection, getAccessToken, disconnect: googleDisconnect } = useGoogleDrive();
 
   useEffect(() => {
-    const checkConnectionStatus = async () => {
-      try {
-        const connected = checkConnection();
-        if (connected) {
-          setIsConnected(true);
-          await loadFiles();
+    const checkConnectionStatus = () => {
+      const connected = checkConnection();
+      setIsConnected(connected);
+      if (connected) {
+        const token = getAccessToken();
+        if (token) {
+          onConnect?.(token);
         }
-      } catch (err) {
-        console.error('Error checking connection:', err);
-        setError('Failed to check Google Drive connection');
       }
     };
 
     checkConnectionStatus();
-  }, []);
+  }, [checkConnection, getAccessToken, onConnect]);
 
-  const loadFiles = async () => {
+  const handleConnect = async () => {
     try {
       setIsLoading(true);
       setError(null);
-      const token = getAccessToken();
-      if (!token) {
-        throw new Error('No access token available');
-      }
-      const fileList = await listFiles(token);
-      setFiles(fileList);
-    } catch (err) {
-      console.error('Error loading files:', err);
-      setError('Failed to load files from Google Drive');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleLogin = async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
+      
+      // Clear any existing error state
+      localStorage.removeItem('googleDriveToken');
+      
       await login();
+      const accessToken = getAccessToken();
+      console.log('Login successful, access token received');
+      
+      if (!accessToken) {
+        throw new Error('Failed to get access token after login');
+      }
+      
       setIsConnected(true);
-      await loadFiles();
+      onConnect?.(accessToken);
     } catch (err) {
-      console.error('Login error:', err);
-      setError('Failed to connect to Google Drive');
+      console.error('Connection error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to connect to Google Drive');
+      setIsConnected(false);
     } finally {
       setIsLoading(false);
     }
@@ -66,100 +60,54 @@ export function GoogleDriveConnect() {
     try {
       googleDisconnect();
       setIsConnected(false);
-      setFiles([]);
+      onDisconnect?.();
     } catch (err) {
       console.error('Disconnection error:', err);
-      setError('Failed to disconnect from Google Drive');
+      setError(err instanceof Error ? err.message : 'Failed to disconnect from Google Drive');
     }
   };
 
-  const handleRefresh = () => {
-    loadFiles();
-  };
-
-  if (!isConnected) {
+  if (isConnected) {
     return (
-      <div className="flex flex-col items-center gap-4 p-4">
-        <h2 className="text-xl font-semibold">Connect to Google Drive</h2>
-        <Button
-          onClick={handleLogin}
-          disabled={isLoading}
-          className="flex items-center gap-2"
+      <div className="text-center py-6">
+        <div className="flex items-center justify-center space-x-2 text-green-600 mb-2">
+          <Shield className="w-5 h-5" />
+          <span>Connected to Google Drive</span>
+        </div>
+        <button
+          onClick={handleDisconnect}
+          className="text-sm text-red-600 hover:text-red-700"
         >
-          {isLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Cloud className="h-4 w-4" />
-          )}
-          Connect with Google Drive
-        </Button>
-        {error && (
-          <p className="text-sm text-red-500">{error}</p>
-        )}
+          Disconnect
+        </button>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-4 p-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold">Google Drive Files</h2>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleRefresh}
-            disabled={isLoading}
-          >
-            <RefreshCw className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleDisconnect}
-          >
-            Disconnect
-          </Button>
-        </div>
-      </div>
-
+    <div className="text-center py-24 bg-card border-2 border-dashed border-border rounded-lg">
+      <Shield size={64} className="mx-auto text-muted-foreground mb-4" />
+      <h3 className="text-2xl font-semibold text-foreground mb-2">Connect Your Storage</h3>
+      <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+        Link your Google Drive account to securely upload, store, and manage your files.
+      </p>
+      
       {error && (
-        <p className="text-sm text-red-500">{error}</p>
+        <div className="text-red-600 mb-4">
+          {error}
+        </div>
       )}
 
-      {isLoading ? (
-        <div className="flex justify-center p-4">
-          <Loader2 className="h-6 w-6 animate-spin" />
-        </div>
-      ) : (
-        <div className="grid gap-4">
-          {files.length === 0 ? (
-            <p className="text-center text-gray-500">No files found</p>
-          ) : (
-            files.map((file) => (
-              <div
-                key={file.id}
-                className="flex items-center justify-between p-4 border rounded-lg"
-              >
-                <div>
-                  <h3 className="font-medium">{file.name}</h3>
-                  <p className="text-sm text-gray-500">
-                    {new Date(file.modifiedTime).toLocaleDateString()}
-                  </p>
-                </div>
-                <a
-                  href={file.webViewLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-blue-500 hover:underline"
-                >
-                  Open
-                </a>
-              </div>
-            ))
-          )}
-        </div>
-      )}
+      <button
+        onClick={handleConnect}
+        disabled={isLoading}
+        className="bg-blue-600 text-white px-6 py-3 rounded-lg flex items-center space-x-2 mx-auto hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <Cloud size={20} />
+        <span>{isLoading ? 'Connecting...' : 'Connect Google Drive'}</span>
+      </button>
     </div>
   );
-}
+};
+
+export default GoogleDriveConnect; 
