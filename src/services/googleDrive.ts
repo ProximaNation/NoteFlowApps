@@ -51,7 +51,7 @@ class GoogleDriveService {
     });
   }
 
-  private async ensureValidToken(): Promise<string> {
+  async ensureValidToken(): Promise<string> {
     if (!this.token) {
       throw new Error('No access token available');
     }
@@ -610,4 +610,4 @@ export const useGoogleDrive = () => {
     isConnected,
     disconnect,
   };
-}; 
+};
