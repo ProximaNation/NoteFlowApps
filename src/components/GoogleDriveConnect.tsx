@@ -55,7 +55,7 @@ export function GoogleDriveConnect() {
     try {
       setIsLoading(true);
       setError(null);
-  
+
       const result = await listFiles(10, pageToken);
       if (!result.files || result.files.length === 0) {
         throw new Error('No files found');
@@ -63,31 +63,8 @@ export function GoogleDriveConnect() {
       setFiles(pageToken ? [...files, ...result.files] : result.files);
       setNextPageToken(result.nextPageToken);
     } catch (err) {
-      try {
-        const files = await listFiles();
-        if (!files || files.length === 0) {
-          throw new Error('No files found');
-        }
-        setFiles(files);
-      } catch (error) {
-        console.error('Failed to load files from Google Drive:', error);
-        setError('Failed to load files from Google Drive. Please try reconnecting.');
-        // Attempt reconnection logic
-        if (!isConnected) {
-          try {
-            await reconnect();
-            const files = await listFiles();
-            if (!files || files.length === 0) {
-              throw new Error('No files found after reconnection');
-            }
-            setFiles(files);
-          } catch (reconnectError) {
-            console.error('Reconnection failed:', reconnectError);
-            setError('Reconnection failed. Please check your connection and try again.');
-          }
-        }
-      }
       console.error('Error loading files:', err);
+      setError('Failed to load files from Google Drive. Please try reconnecting.');
       // Attempt reconnection
       if (!isConnected) {
         try {
@@ -99,6 +76,7 @@ export function GoogleDriveConnect() {
           }
         } catch (reconnectError) {
           console.error('Reconnection failed:', reconnectError);
+          setError('Reconnection failed. Please check your connection and try again.');
         }
       }
     } finally {
