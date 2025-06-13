@@ -15,6 +15,7 @@ interface DataContextType {
   deleteTodo: (id: string) => Promise<void>;
   searchNotes: (query: string) => Promise<Note[]>;
   searchTodos: (query: string) => Promise<Todo[]>;
+  refreshData: () => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | null>(null);
@@ -34,68 +35,136 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(dbError);
 
+  const loadData = async () => {
+    if (!isInitialized || !db) {
+      console.error('IndexedDB not initialized');
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      const [loadedNotes, loadedTodos] = await Promise.all([
+        db.getAllNotes(),
+        db.getAllTodos(),
+      ]);
+      setNotes(loadedNotes);
+      setTodos(loadedTodos);
+      setError(null);
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to load data');
+      setError(error);
+      console.error('Failed to load data:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
-    if (!isInitialized) return;
-
-    const loadData = async () => {
-      try {
-        const [loadedNotes, loadedTodos] = await Promise.all([
-          db.getAllNotes(),
-          db.getAllTodos(),
-        ]);
-        setNotes(loadedNotes);
-        setTodos(loadedTodos);
-      } catch (err) {
-        setError(err instanceof Error ? err : new Error('Failed to load data'));
-        console.error('Failed to load data:', err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadData();
-  }, [isInitialized, db]);
+    if (isInitialized) {
+      loadData();
+    }
+  }, [isInitialized]);
 
   const addNote = async (note: Omit<Note, 'id'>) => {
-    const newNote = await db.addNote(note);
-    setNotes(prev => [...prev, newNote]);
-    return newNote;
+    if (!db) throw new Error('Database not initialized');
+    try {
+      const newNote = await db.addNote(note);
+      setNotes(prev => [...prev, newNote]);
+      return newNote;
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to add note');
+      setError(error);
+      throw error;
+    }
   };
 
   const updateNote = async (id: string, note: Partial<Note>) => {
-    const updatedNote = await db.updateNote(id, note);
-    setNotes(prev => prev.map(n => n.id === id ? updatedNote : n));
-    return updatedNote;
+    if (!db) throw new Error('Database not initialized');
+    try {
+      const updatedNote = await db.updateNote(id, note);
+      setNotes(prev => prev.map(n => n.id === id ? updatedNote : n));
+      return updatedNote;
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to update note');
+      setError(error);
+      throw error;
+    }
   };
 
   const deleteNote = async (id: string) => {
-    await db.deleteNote(id);
-    setNotes(prev => prev.filter(n => n.id !== id));
+    if (!db) throw new Error('Database not initialized');
+    try {
+      await db.deleteNote(id);
+      setNotes(prev => prev.filter(n => n.id !== id));
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to delete note');
+      setError(error);
+      throw error;
+    }
   };
 
   const addTodo = async (todo: Omit<Todo, 'id'>) => {
-    const newTodo = await db.addTodo(todo);
-    setTodos(prev => [...prev, newTodo]);
-    return newTodo;
+    if (!db) throw new Error('Database not initialized');
+    try {
+      const newTodo = await db.addTodo(todo);
+      setTodos(prev => [...prev, newTodo]);
+      return newTodo;
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to add todo');
+      setError(error);
+      throw error;
+    }
   };
 
   const updateTodo = async (id: string, todo: Partial<Todo>) => {
-    const updatedTodo = await db.updateTodo(id, todo);
-    setTodos(prev => prev.map(t => t.id === id ? updatedTodo : t));
-    return updatedTodo;
+    if (!db) throw new Error('Database not initialized');
+    try {
+      const updatedTodo = await db.updateTodo(id, todo);
+      setTodos(prev => prev.map(t => t.id === id ? updatedTodo : t));
+      return updatedTodo;
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to update todo');
+      setError(error);
+      throw error;
+    }
   };
 
   const deleteTodo = async (id: string) => {
-    await db.deleteTodo(id);
-    setTodos(prev => prev.filter(t => t.id !== id));
+    if (!db) throw new Error('Database not initialized');
+    try {
+      await db.deleteTodo(id);
+      setTodos(prev => prev.filter(t => t.id !== id));
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to delete todo');
+      setError(error);
+      throw error;
+    }
   };
 
   const searchNotes = async (query: string) => {
-    return db.searchNotes(query);
+    if (!db) throw new Error('Database not initialized');
+    try {
+      return await db.searchNotes(query);
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to search notes');
+      setError(error);
+      throw error;
+    }
   };
 
   const searchTodos = async (query: string) => {
-    return db.searchTodos(query);
+    if (!db) throw new Error('Database not initialized');
+    try {
+      return await db.searchTodos(query);
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to search todos');
+      setError(error);
+      throw error;
+    }
+  };
+
+  const refreshData = async () => {
+    await loadData();
   };
 
   return (
@@ -113,6 +182,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         deleteTodo,
         searchNotes,
         searchTodos,
+        refreshData,
       }}
     >
       {children}

@@ -1,6 +1,7 @@
 import { Inter } from 'next/font/google';
 import './globals.css';
 import { DataProvider } from '@/contexts/DataContext';
+import { GoogleProvider } from '@/providers/GoogleOAuthProvider';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -12,9 +13,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
-        <DataProvider>
-          {children}
-        </DataProvider>
+        <GoogleProvider>
+          <DataProvider>
+            {children}
+          </DataProvider>
+        </GoogleProvider>
       </body>
     </html>
   );

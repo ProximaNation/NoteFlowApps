@@ -1,16 +1,180 @@
-import { useGoogleLogin } from '@react-oauth/google';
+import { google } from 'googleapis';
+import { OAuth2Client } from 'google-auth-library';
 import CryptoJS from 'crypto-js';
+
+const CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+const CLIENT_SECRET = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_SECRET;
+const REDIRECT_URI = process.env.NEXT_PUBLIC_GOOGLE_REDIRECT_URI;
+
+if (!CLIENT_ID || !CLIENT_SECRET || !REDIRECT_URI) {
+  throw new Error('Missing Google OAuth credentials');
+}
+
+const oauth2Client = new OAuth2Client(
+  CLIENT_ID,
+  CLIENT_SECRET,
+  REDIRECT_URI
+);
 
 export interface GoogleDriveFile {
   id: string;
   name: string;
   mimeType: string;
-  size?: number;
-  createdTime?: string;
-  modifiedTime?: string;
-  webViewLink?: string;
-  isEncrypted?: boolean;
+  webViewLink: string;
+  createdTime: string;
+  modifiedTime: string;
+  size?: string;
 }
+
+class GoogleDriveService {
+  private drive = google.drive({ version: 'v3', auth: oauth2Client });
+  private token: string | null = null;
+
+  setToken(token: string) {
+    this.token = token;
+    oauth2Client.setCredentials({ access_token: token });
+  }
+
+  async listFiles(pageSize: number = 10, pageToken?: string): Promise<{
+    files: GoogleDriveFile[];
+    nextPageToken?: string;
+  }> {
+    try {
+      if (!this.token) {
+        throw new Error('No access token available');
+      }
+
+      const response = await this.drive.files.list({
+        pageSize,
+        pageToken,
+        fields: 'nextPageToken, files(id, name, mimeType, webViewLink, createdTime, modifiedTime, size)',
+        orderBy: 'modifiedTime desc',
+      });
+
+      return {
+        files: response.data.files as GoogleDriveFile[],
+        nextPageToken: response.data.nextPageToken,
+      };
+    } catch (error) {
+      console.error('Error listing files:', error);
+      throw new Error('Failed to list files from Google Drive');
+    }
+  }
+
+  async uploadFile(file: File, folderId?: string): Promise<GoogleDriveFile> {
+    try {
+      if (!this.token) {
+        throw new Error('No access token available');
+      }
+
+      const fileMetadata = {
+        name: file.name,
+        parents: folderId ? [folderId] : undefined,
+      };
+
+      const media = {
+        mimeType: file.type,
+        body: file,
+      };
+
+      const response = await this.drive.files.create({
+        requestBody: fileMetadata,
+        media,
+        fields: 'id, name, mimeType, webViewLink, createdTime, modifiedTime, size',
+      });
+
+      return response.data as GoogleDriveFile;
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      throw new Error('Failed to upload file to Google Drive');
+    }
+  }
+
+  async deleteFile(fileId: string): Promise<void> {
+    try {
+      if (!this.token) {
+        throw new Error('No access token available');
+      }
+
+      await this.drive.files.delete({
+        fileId,
+      });
+    } catch (error) {
+      console.error('Error deleting file:', error);
+      throw new Error('Failed to delete file from Google Drive');
+    }
+  }
+
+  async createFolder(name: string, parentFolderId?: string): Promise<GoogleDriveFile> {
+    try {
+      if (!this.token) {
+        throw new Error('No access token available');
+      }
+
+      const fileMetadata = {
+        name,
+        mimeType: 'application/vnd.google-apps.folder',
+        parents: parentFolderId ? [parentFolderId] : undefined,
+      };
+
+      const response = await this.drive.files.create({
+        requestBody: fileMetadata,
+        fields: 'id, name, mimeType, webViewLink, createdTime, modifiedTime',
+      });
+
+      return response.data as GoogleDriveFile;
+    } catch (error) {
+      console.error('Error creating folder:', error);
+      throw new Error('Failed to create folder in Google Drive');
+    }
+  }
+
+  async searchFiles(query: string, pageSize: number = 10): Promise<{
+    files: GoogleDriveFile[];
+    nextPageToken?: string;
+  }> {
+    try {
+      if (!this.token) {
+        throw new Error('No access token available');
+      }
+
+      const response = await this.drive.files.list({
+        q: `name contains '${query}'`,
+        pageSize,
+        fields: 'nextPageToken, files(id, name, mimeType, webViewLink, createdTime, modifiedTime, size)',
+        orderBy: 'modifiedTime desc',
+      });
+
+      return {
+        files: response.data.files as GoogleDriveFile[],
+        nextPageToken: response.data.nextPageToken,
+      };
+    } catch (error) {
+      console.error('Error searching files:', error);
+      throw new Error('Failed to search files in Google Drive');
+    }
+  }
+
+  async getFileMetadata(fileId: string): Promise<GoogleDriveFile> {
+    try {
+      if (!this.token) {
+        throw new Error('No access token available');
+      }
+
+      const response = await this.drive.files.get({
+        fileId,
+        fields: 'id, name, mimeType, webViewLink, createdTime, modifiedTime, size',
+      });
+
+      return response.data as GoogleDriveFile;
+    } catch (error) {
+      console.error('Error getting file metadata:', error);
+      throw new Error('Failed to get file metadata from Google Drive');
+    }
+  }
+}
+
+export const googleDrive = new GoogleDriveService();
 
 export const useGoogleDrive = () => {
   const login = useGoogleLogin({
