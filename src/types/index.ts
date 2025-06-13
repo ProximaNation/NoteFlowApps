@@ -1,20 +1,23 @@
-
 export interface Note {
-  id: string;
+  id?: string;
   title: string;
   content: string;
-  createdAt: Date;
-  updatedAt: Date;
-  pinned: boolean;
+  createdAt?: Date;
+  updatedAt?: Date;
+  tags?: string[];
+  color?: string;
 }
 
 export interface Todo {
-  id: string;
+  id?: string;
   title: string;
+  description?: string;
   completed: boolean;
-  priority: 'low' | 'medium' | 'high';
   dueDate?: Date;
-  createdAt: Date;
+  priority?: 'low' | 'medium' | 'high';
+  createdAt?: Date;
+  updatedAt?: Date;
+  tags?: string[];
 }
 
 export interface StoredFile {
@@ -43,4 +46,27 @@ export interface AppData {
   focusedTasks: string[];
   files: StoredFile[];
   links: StoredLink[];
+}
+
+// Database specific types
+export interface DBNote {
+  id: string;
+  title: string;
+  content: string;
+  createdAt: number;
+  updatedAt: number;
+  tags?: string[];
+  color?: string;
+}
+
+export interface DBTodo {
+  id: string;
+  title: string;
+  description?: string;
+  completed: boolean;
+  dueDate?: number;
+  priority?: 'low' | 'medium' | 'high';
+  createdAt: number;
+  updatedAt: number;
+  tags?: string[];
 }

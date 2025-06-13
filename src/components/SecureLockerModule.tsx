@@ -2,15 +2,18 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Upload, Download, Trash2, File, Image, Video, FileText, FolderOpen, Lock, Eye, EyeOff, Shield, Cloud, KeyRound } from 'lucide-react';
 import { StoredFile } from '../types';
 import { useGoogleDrive } from '@/services/googleDrive';
-import { passwordManager } from '@/services/passwordManager';
+import { PasswordManager } from '@/services/passwordManager';
 import GoogleDriveConnect from './GoogleDriveConnect';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
 interface SecureLockerModuleProps {
   files: StoredFile[];
   setFiles: (files: StoredFile[]) => void;
+  children: React.ReactNode;
 }
 
-const SecureLockerModule = ({ files, setFiles }: SecureLockerModuleProps) => {
+const SecureLockerModule = ({ files, setFiles, children }: SecureLockerModuleProps) => {
   const [uploading, setUploading] = useState(false);
   const [downloading, setDownloading] = useState<string | null>(null);
   const [filePassword, setFilePassword] = useState('');
@@ -22,20 +25,31 @@ const SecureLockerModule = ({ files, setFiles }: SecureLockerModuleProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Master password states
-  const [isMasterPasswordSet, setIsMasterPasswordSet] = useState(false);
   const [isUnlocked, setIsUnlocked] = useState(false);
-  const [masterPassword, setMasterPassword] = useState('');
-  const [confirmMasterPassword, setConfirmMasterPassword] = useState('');
-  const [masterPasswordError, setMasterPasswordError] = useState('');
-  const [showMasterPassword, setShowMasterPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [showPassword, setShowPassword] = useState(false);
+  const [password, setPassword] = useState('');
+  const [isSetup, setIsSetup] = useState(false);
 
   const { uploadFile, downloadFile, getAccessToken, listFiles: listDriveFiles } = useGoogleDrive();
+  const passwordManager = PasswordManager.getInstance();
 
   useEffect(() => {
-    // Check if master password is already set
-    const hasPassword = passwordManager.hasMasterPassword();
-    setIsMasterPasswordSet(hasPassword);
-    setIsUnlocked(!hasPassword); // If no password is set, the locker is unlocked by default
+    const checkAccess = async () => {
+      try {
+        const hasAccess = await passwordManager.checkAccess();
+        setIsUnlocked(hasAccess);
+        const hasPassword = await passwordManager.hasPassword();
+        setIsSetup(hasPassword);
+      } catch (err) {
+        console.error('Error checking access:', err);
+        setError('Failed to check access. Please try again.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkAccess();
   }, []);
 
   const handleGoogleDriveConnect = async (accessToken: string) => {
@@ -64,36 +78,39 @@ const SecureLockerModule = ({ files, setFiles }: SecureLockerModuleProps) => {
     setFiles([]);
   };
 
-  const handleSetMasterPassword = () => {
-    if (masterPassword !== confirmMasterPassword) {
-      setMasterPasswordError('Passwords do not match.');
-      return;
+  const handleUnlock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    try {
+      const isValid = await passwordManager.verifyPassword(password);
+      if (isValid) {
+        setIsUnlocked(true);
+      } else {
+        setError('Invalid password. Please try again.');
+      }
+    } catch (err) {
+      console.error('Error verifying password:', err);
+      setError('Failed to verify password. Please try again.');
     }
-    if (masterPassword.length < 8) {
-      setMasterPasswordError('Password must be at least 8 characters long.');
+  };
+
+  const handleSetup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters long');
       return;
     }
 
     try {
-      passwordManager.setMasterPassword(masterPassword);
-      setIsMasterPasswordSet(true);
+      await passwordManager.setPassword(password);
       setIsUnlocked(true);
-      setMasterPasswordError('');
-      setMasterPassword('');
-      setConfirmMasterPassword('');
-    } catch (error) {
-      console.error('Error setting master password:', error);
-      setMasterPasswordError('Failed to set master password. Please try again.');
-    }
-  };
-
-  const handleUnlockLocker = () => {
-    if (passwordManager.verifyPassword(masterPassword)) {
-      setIsUnlocked(true);
-      setMasterPassword('');
-      setMasterPasswordError('');
-    } else {
-      setMasterPasswordError('Incorrect password. Please try again.');
+      setIsSetup(true);
+    } catch (err) {
+      console.error('Error setting password:', err);
+      setError('Failed to set password. Please try again.');
     }
   };
 
@@ -243,233 +260,61 @@ const SecureLockerModule = ({ files, setFiles }: SecureLockerModuleProps) => {
     );
   };
 
-  // Render password setup screen
-  if (!isMasterPasswordSet) {
+  if (isLoading) {
     return (
-      <div className="text-center py-24 bg-card border-2 border-dashed border-border rounded-lg">
-        <KeyRound size={64} className="mx-auto text-muted-foreground mb-4" />
-        <h3 className="text-2xl font-semibold text-foreground mb-2">Set Your Locker Password</h3>
-        <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-          Create a master password to secure your locker. You will need this to access your files.
-        </p>
-        
-        {masterPasswordError && (
-          <div className="text-red-600 mb-4">
-            {masterPasswordError}
-          </div>
-        )}
-
-        <div className="max-w-md mx-auto space-y-4">
-          <div className="relative">
-            <input
-              type={showMasterPassword ? 'text' : 'password'}
-              value={masterPassword}
-              onChange={(e) => setMasterPassword(e.target.value)}
-              placeholder="Enter master password"
-              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <button
-              onClick={() => setShowMasterPassword(!showMasterPassword)}
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500"
-            >
-              {showMasterPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-            </button>
-          </div>
-
-          <div className="relative">
-            <input
-              type={showMasterPassword ? 'text' : 'password'}
-              value={confirmMasterPassword}
-              onChange={(e) => setConfirmMasterPassword(e.target.value)}
-              placeholder="Confirm master password"
-              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          <button
-            onClick={handleSetMasterPassword}
-            disabled={!masterPassword || !confirmMasterPassword}
-            className="w-full bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Set Password
-          </button>
-        </div>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
       </div>
     );
   }
 
-  // Render unlock screen
-  if (!isUnlocked) {
-    return (
-      <div className="text-center py-24 bg-card border-2 border-dashed border-border rounded-lg">
-        <Lock size={64} className="mx-auto text-muted-foreground mb-4" />
-        <h3 className="text-2xl font-semibold text-foreground mb-2">Unlock Your Locker</h3>
-        <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-          Enter your master password to access your files.
-        </p>
-        
-        {masterPasswordError && (
-          <div className="text-red-600 mb-4">
-            {masterPasswordError}
-          </div>
-        )}
-
-        <div className="max-w-md mx-auto space-y-4">
-          <div className="relative">
-            <input
-              type={showMasterPassword ? 'text' : 'password'}
-              value={masterPassword}
-              onChange={(e) => setMasterPassword(e.target.value)}
-              placeholder="Enter master password"
-              className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <button
-              onClick={() => setShowMasterPassword(!showMasterPassword)}
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500"
-            >
-              {showMasterPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-            </button>
-          </div>
-
-          <button
-            onClick={handleUnlockLocker}
-            disabled={!masterPassword}
-            className="w-full bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Unlock
-          </button>
-        </div>
-      </div>
-    );
+  if (isUnlocked) {
+    return <>{children}</>;
   }
 
-  // Render main locker interface
   return (
-    <div className="p-8 bg-background text-foreground flex-1">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold">Secure Locker</h1>
+    <div className="flex items-center justify-center min-h-screen bg-background">
+      <div className="w-full max-w-md p-6 space-y-6 bg-card rounded-lg shadow-lg">
+        <div className="space-y-2 text-center">
+          <h1 className="text-2xl font-bold">
+            {isSetup ? 'Unlock Secure Locker' : 'Set Up Secure Locker'}
+          </h1>
+          <p className="text-muted-foreground">
+            {isSetup
+              ? 'Enter your password to access your secure files'
+              : 'Create a password to protect your secure files'}
+          </p>
         </div>
 
-        {error && (
-          <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded">
-            {error}
-          </div>
-        )}
-
-        {!isGoogleDriveConnected ? (
-          <GoogleDriveConnect 
-            onConnect={handleGoogleDriveConnect}
-            onDisconnect={handleGoogleDriveDisconnect}
-          />
-        ) : (
-          <div>
-            <div className="mb-8">
-              <div className="flex items-center space-x-4">
-                <div className="flex-1">
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleFileUpload}
-                    multiple
-                    className="hidden"
-                  />
-                  <div className="flex items-center space-x-4">
-                    <div className="flex-1">
-                      <label className="flex items-center space-x-2">
-                        <input
-                          type="checkbox"
-                          checked={protectWithPassword}
-                          onChange={(e) => setProtectWithPassword(e.target.checked)}
-                          className="form-checkbox h-4 w-4 text-blue-600"
-                        />
-                        <span>Protect files with password</span>
-                      </label>
-                      {protectWithPassword && (
-                        <div className="mt-2 relative">
-                          <input
-                            type={showFilePassword ? 'text' : 'password'}
-                            value={filePassword}
-                            onChange={(e) => setFilePassword(e.target.value)}
-                            placeholder="Enter file password"
-                            className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          />
-                          <button
-                            onClick={() => setShowFilePassword(!showFilePassword)}
-                            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500"
-                          >
-                            {showFilePassword ? <EyeOff size={20} /> : <Eye size={20} />}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading || (protectWithPassword && !filePassword)}
-                  className="flex items-center space-x-2 bg-primary text-primary-foreground px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
-                >
-                  <Upload size={20} />
-                  <span>{uploading ? 'Uploading...' : 'Upload Files'}</span>
-                </button>
-              </div>
+        <form onSubmit={isSetup ? handleUnlock : handleSetup} className="space-y-4">
+          <div className="space-y-2">
+            <div className="relative">
+              <Input
+                type={showPassword ? 'text' : 'password'}
+                placeholder="Enter password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="pr-10"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                {showPassword ? (
+                  <EyeOff className="h-4 w-4" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
+              </button>
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {files.map((file) => {
-                const FileIcon = getFileIcon(file.type);
-                return (
-                  <div
-                    key={file.id}
-                    className="bg-card p-4 rounded-lg border hover:border-primary transition-colors"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center space-x-3">
-                        <FileIcon size={24} className="text-primary" />
-                        <div>
-                          <h3 className="font-medium truncate max-w-[200px]">{file.name}</h3>
-                          <p className="text-sm text-muted-foreground">
-                            {formatFileSize(file.size)}
-                          </p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => deleteFile(file.id)}
-                        className="text-destructive hover:text-destructive/90"
-                      >
-                        <Trash2 size={20} />
-                      </button>
-                    </div>
-                    <div className="mt-4 flex justify-between items-center">
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={() => handleFileDownload(file)}
-                          disabled={downloading === file.id}
-                          className="text-primary hover:underline text-sm flex items-center space-x-1"
-                        >
-                          <Download size={16} />
-                          <span>{downloading === file.id ? 'Downloading...' : 'Download'}</span>
-                        </button>
-                        <a
-                          href={file.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-primary hover:underline text-sm"
-                        >
-                          View in Drive
-                        </a>
-                      </div>
-                      {file.isProtected && (
-                        <Lock size={16} className="text-muted-foreground" />
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+            {error && <p className="text-sm text-destructive">{error}</p>}
           </div>
-        )}
+
+          <Button type="submit" className="w-full">
+            {isSetup ? 'Unlock' : 'Set Password'}
+          </Button>
+        </form>
       </div>
     </div>
   );
