@@ -16,18 +16,25 @@ export const useGoogleDrive = () => {
   const login = useGoogleLogin({
     onSuccess: async (tokenResponse) => {
       try {
+        if (!tokenResponse.access_token) {
+          throw new Error('No access token received from Google');
+        }
+        console.log('Received token response:', tokenResponse);
         localStorage.setItem('googleDriveToken', tokenResponse.access_token);
         return tokenResponse.access_token;
       } catch (error) {
         console.error('Error during Google Drive login:', error);
+        localStorage.removeItem('googleDriveToken'); // Clear invalid token
         throw error;
       }
     },
     onError: (error) => {
       console.error('Google Drive login failed:', error);
+      localStorage.removeItem('googleDriveToken'); // Clear invalid token
       throw error;
     },
-    scope: 'https://www.googleapis.com/auth/drive',
+    scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.appdata',
+    flow: 'implicit',
   });
 
   const encryptFile = async (file: File, password: string): Promise<Blob> => {
@@ -56,7 +63,14 @@ export const useGoogleDrive = () => {
         try {
           const encrypted = e.target?.result as string;
           const decrypted = CryptoJS.AES.decrypt(encrypted, password);
-          const decryptedArray = decrypted.toArrayBuffer();
+          const decryptedArray = new Uint8Array(decrypted.words.length * 4);
+          for (let i = 0; i < decrypted.words.length; i++) {
+            const word = decrypted.words[i];
+            decryptedArray[i * 4] = (word >> 24) & 0xff;
+            decryptedArray[i * 4 + 1] = (word >> 16) & 0xff;
+            decryptedArray[i * 4 + 2] = (word >> 8) & 0xff;
+            decryptedArray[i * 4 + 3] = word & 0xff;
+          }
           const decryptedBlob = new Blob([decryptedArray], { type: 'application/octet-stream' });
           resolve(decryptedBlob);
         } catch (error) {
@@ -70,11 +84,12 @@ export const useGoogleDrive = () => {
 
   const uploadFile = async (file: File, accessToken: string, password?: string): Promise<GoogleDriveFile> => {
     try {
-      let fileToUpload = file;
+      let fileToUpload: File | Blob = file;
       let isEncrypted = false;
 
       if (password) {
-        fileToUpload = await encryptFile(file, password);
+        const encryptedBlob = await encryptFile(file, password);
+        fileToUpload = new File([encryptedBlob], file.name, { type: 'application/encrypted' });
         isEncrypted = true;
       }
 
@@ -85,6 +100,13 @@ export const useGoogleDrive = () => {
           isEncrypted: isEncrypted.toString(),
         },
       };
+
+      console.log('Uploading file:', {
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        isEncrypted
+      });
 
       const form = new FormData();
       form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
@@ -100,10 +122,17 @@ export const useGoogleDrive = () => {
 
       if (!response.ok) {
         const errorData = await response.json();
+        console.error('Upload failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorData
+        });
         throw new Error(errorData.error?.message || 'Failed to upload file');
       }
 
       const data = await response.json();
+      console.log('Upload successful:', data);
+
       return {
         id: data.id,
         name: data.name,
@@ -227,14 +256,25 @@ export const useGoogleDrive = () => {
   };
 
   const getAccessToken = (): string | null => {
-    return localStorage.getItem('googleDriveToken');
+    const token = localStorage.getItem('googleDriveToken');
+    if (!token) {
+      console.log('No access token found in localStorage');
+      return null;
+    }
+    return token;
   };
 
   const isConnected = (): boolean => {
-    return !!getAccessToken();
+    const token = getAccessToken();
+    if (!token) {
+      console.log('Not connected: No access token found');
+      return false;
+    }
+    return true;
   };
 
   const disconnect = (): void => {
+    console.log('Disconnecting from Google Drive');
     localStorage.removeItem('googleDriveToken');
   };
 

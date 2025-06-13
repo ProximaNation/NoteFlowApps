@@ -15,25 +15,42 @@ const GoogleDriveConnect: React.FC<GoogleDriveConnectProps> = ({ onConnect, onDi
   const { login, isConnected: checkConnection, getAccessToken, disconnect: googleDisconnect } = useGoogleDrive();
 
   useEffect(() => {
-    const connected = checkConnection();
-    setIsConnected(connected);
-  }, [checkConnection]);
+    const checkConnectionStatus = () => {
+      const connected = checkConnection();
+      setIsConnected(connected);
+      if (connected) {
+        const token = getAccessToken();
+        if (token) {
+          onConnect?.(token);
+        }
+      }
+    };
+
+    checkConnectionStatus();
+  }, [checkConnection, getAccessToken, onConnect]);
 
   const handleConnect = async () => {
     try {
       setIsLoading(true);
       setError(null);
+      
+      // Clear any existing error state
+      localStorage.removeItem('googleDriveToken');
+      
       await login();
       const accessToken = getAccessToken();
-      if (accessToken) {
-        setIsConnected(true);
-        onConnect?.(accessToken);
-      } else {
-        throw new Error('Failed to get access token');
+      console.log('Login successful, access token received');
+      
+      if (!accessToken) {
+        throw new Error('Failed to get access token after login');
       }
+      
+      setIsConnected(true);
+      onConnect?.(accessToken);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to connect to Google Drive');
       console.error('Connection error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to connect to Google Drive');
+      setIsConnected(false);
     } finally {
       setIsLoading(false);
     }
@@ -45,8 +62,8 @@ const GoogleDriveConnect: React.FC<GoogleDriveConnectProps> = ({ onConnect, onDi
       setIsConnected(false);
       onDisconnect?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to disconnect from Google Drive');
       console.error('Disconnection error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to disconnect from Google Drive');
     }
   };
 
