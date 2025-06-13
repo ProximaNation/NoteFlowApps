@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Cloud, Shield, File, Folder, RefreshCw } from 'lucide-react';
-import { useGoogleDrive } from '@/services/googleDrive';
+import { useGoogleDrive, GoogleDriveFile } from '@/services/googleDrive';
 import { useGoogleLogin } from '@react-oauth/google';
 import { Button } from './ui/button';
 import { Loader2 } from 'lucide-react';
@@ -12,13 +12,13 @@ export function GoogleDriveConnect() {
   const [files, setFiles] = useState<GoogleDriveFile[]>([]);
   const [nextPageToken, setNextPageToken] = useState<string | undefined>();
 
-  const { login: googleLogin, isConnected: checkConnection, getAccessToken, disconnect: googleDisconnect } = useGoogleDrive();
+  const { login: googleLogin, isConnected: checkConnection, getAccessToken, disconnect: googleDisconnect, setToken, listFiles } = useGoogleDrive();
 
   useEffect(() => {
     // Check if we have a stored token
     const storedToken = localStorage.getItem('googleDriveToken');
     if (storedToken) {
-      googleLogin.setToken(storedToken);
+      setToken(storedToken);
       setIsConnected(true);
       loadFiles();
     }
@@ -32,7 +32,7 @@ export function GoogleDriveConnect() {
         
         // Store the token
         localStorage.setItem('googleDriveToken', response.access_token);
-        googleLogin.setToken(response.access_token);
+        setToken(response.access_token);
         setIsConnected(true);
         
         // Load initial files
@@ -56,7 +56,7 @@ export function GoogleDriveConnect() {
       setIsLoading(true);
       setError(null);
   
-      const result = await googleLogin.listFiles(10, pageToken);
+      const result = await listFiles(10, pageToken);
       if (!result.files || result.files.length === 0) {
         throw new Error('No files found');
       }
