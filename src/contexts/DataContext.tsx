@@ -73,6 +73,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       return newNote;
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Failed to add note');
+      console.error('Error adding note:', error);
       setError(error);
       throw error;
     }
@@ -86,6 +87,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       return updatedNote;
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Failed to update note');
+      console.error('Error updating note:', error);
       setError(error);
       throw error;
     }
@@ -98,6 +100,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       setNotes(prev => prev.filter(n => n.id !== id));
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Failed to delete note');
+      console.error('Error deleting note:', error);
       setError(error);
       throw error;
     }
@@ -111,6 +114,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       return newTodo;
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Failed to add todo');
+      console.error('Error adding todo:', error);
       setError(error);
       throw error;
     }
@@ -188,4 +192,4 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       {children}
     </DataContext.Provider>
   );
-} 
+}
