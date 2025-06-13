@@ -55,8 +55,11 @@ export function GoogleDriveConnect() {
     try {
       setIsLoading(true);
       setError(null);
-
+  
       const result = await googleLogin.listFiles(10, pageToken);
+      if (!result.files || result.files.length === 0) {
+        throw new Error('No files found');
+      }
       setFiles(pageToken ? [...files, ...result.files] : result.files);
       setNextPageToken(result.nextPageToken);
     } catch (err) {
@@ -190,4 +193,4 @@ export function GoogleDriveConnect() {
       )}
     </div>
   );
-} 
+}
